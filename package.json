@@ -1,0 +1,29 @@
+{
+  "name": "mizmar",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.9.1",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "infra:reset": "docker compose -f infra/docker-compose.yml down -v && pnpm infra:up",
+    "db:generate": "pnpm --filter @mizmar/api prisma:generate",
+    "db:migrate": "pnpm --filter @mizmar/api prisma:migrate",
+    "db:push": "pnpm --filter @mizmar/api prisma:push",
+    "db:seed": "pnpm --filter @mizmar/api seed",
+    "db:studio": "pnpm --filter @mizmar/api prisma:studio",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

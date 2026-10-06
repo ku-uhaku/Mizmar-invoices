@@ -1,0 +1,47 @@
+{
+  "name": "@mizmar/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "build": "expo export --platform all",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "expo lint",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@mizmar/contracts": "workspace:*",
+    "@mizmar/core": "workspace:*",
+    "@mizmar/i18n": "workspace:*",
+    "@tanstack/react-query": "^5.62.11",
+    "@ts-rest/core": "^3.51.0",
+    "expo": "~57.0.27",
+    "expo-camera": "~57.0.6",
+    "expo-constants": "~57.0.21",
+    "expo-file-system": "~57.0.7",
+    "expo-font": "~57.0.4",
+    "expo-linking": "~57.0.12",
+    "expo-router": "~57.0.25",
+    "expo-secure-store": "~57.0.4",
+    "expo-sharing": "~57.0.22",
+    "expo-sqlite": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.28.0"
+  },
+  "devDependencies": {
+    "@expo/metro-runtime": "^57.0.16",
+    "@mizmar/tsconfig": "workspace:*",
+    "@types/react": "~19.2.0",
+    "react-dom": "^19.3.0",
+    "react-native-web": "^0.21.3",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  }
+}

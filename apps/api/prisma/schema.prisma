@@ -1,0 +1,1263 @@
+// Mizmar — invoicing, stock and document pipeline.
+//
+// Tenancy: one Organization owns several Company rows (legal entities). The
+// catalog, contacts and warehouses are shared across the organization; document
+// numbering, branding, VAT settings and the documents themselves are
+// company-scoped, so each legal entity invoices under its own ICE/RC/IF.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  SALES
+  WAREHOUSE
+  VIEWER
+}
+
+enum ContactKind {
+  CLIENT
+  SUPPLIER
+  BOTH
+}
+
+enum AddressKind {
+  BILLING
+  SHIPPING
+}
+
+enum DocumentType {
+  DEVIS
+  SALES_ORDER
+  DELIVERY_NOTE
+  SALES_INVOICE
+  CREDIT_NOTE
+  PURCHASE_ORDER
+  GOODS_RECEIPT
+  PURCHASE_INVOICE
+}
+
+enum DocumentSide {
+  SALES
+  PURCHASE
+}
+
+enum Lifecycle {
+  DRAFT
+  VALIDATED
+  SENT
+  CANCELLED
+}
+
+enum Fulfilment {
+  NOT_APPLICABLE
+  PENDING
+  PARTIAL
+  COMPLETE
+}
+
+enum Settlement {
+  NOT_APPLICABLE
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum DiscountKind {
+  PERCENT
+  AMOUNT
+}
+
+enum PriceMode {
+  EXCLUSIVE
+  INCLUSIVE
+}
+
+enum PaymentTerm {
+  IMMEDIATE
+  NET_15
+  NET_30
+  NET_45
+  NET_60
+  NET_90
+  END_OF_MONTH
+  END_OF_NEXT_MONTH
+  CUSTOM
+}
+
+enum PaymentDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  BILL_OF_EXCHANGE
+  CARD
+  OTHER
+}
+
+/// Why a stock ledger row exists. Document-driven rows carry a document link;
+/// the rest carry a reason and a note.
+enum MovementType {
+  OPENING_BALANCE
+  SALE
+  SALE_RETURN
+  PURCHASE
+  PURCHASE_RETURN
+  ADJUSTMENT
+  COUNT_CORRECTION
+  TRANSFER_OUT
+  TRANSFER_IN
+  CANCELLATION
+}
+
+enum AdjustmentReason {
+  DAMAGED
+  LOST
+  SHRINKAGE
+  EXPIRED
+  FOUND
+  COUNT_VARIANCE
+  CORRECTION
+  OTHER
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  CANCELLED
+}
+
+enum StockDirection {
+  IN
+  OUT
+}
+
+enum NegativeStockPolicy {
+  BLOCK
+  WARN
+  ALLOW
+}
+
+enum RoundingMode {
+  HALF_UP
+  HALF_DOWN
+  HALF_EVEN
+  UP
+  DOWN
+}
+
+enum RoundingGranularity {
+  LINE
+  DOCUMENT
+}
+
+enum AssetKind {
+  LOGO
+  STAMP
+  SIGNATURE
+  PRODUCT_IMAGE
+  DOCUMENT_PDF
+  ATTACHMENT
+}
+
+enum CountSessionStatus {
+  OPEN
+  COUNTING
+  REVIEW
+  POSTED
+  ABANDONED
+}
+
+enum TransferStatus {
+  DRAFT
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+enum Locale {
+  EN
+  FR
+  AR
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy and access
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companies      Company[]
+  memberships    Membership[]
+  contacts       Contact[]
+  attributeTypes AttributeType[]
+  products       Product[]
+  warehouses     Warehouse[]
+  priceLists     PriceList[]
+  units          Unit[]
+  assets         Asset[]
+  auditLogs      AuditLog[]
+  countSessions  StockCountSession[]
+  transfers      StockTransfer[]
+
+  @@map("organizations")
+}
+
+/// A legal entity that issues documents under its own tax identity.
+model Company {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Short code usable in document numbers via the {COMPANY} token.
+  code      String
+  name      String
+  legalName String?
+
+  // Moroccan legal identifiers printed on every document.
+  ice           String?
+  rc            String?
+  taxId         String? /// Identifiant Fiscal (IF)
+  patente       String?
+  cnss          String?
+  shareCapital  Decimal? @db.Decimal(18, 2)
+  legalForm     String?
+
+  email   String?
+  phone   String?
+  phone2  String?
+  website String?
+
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  postalCode   String?
+  country      String  @default("MA")
+
+  bankName String?
+  iban     String?
+  rib      String?
+  swift    String?
+
+  logoAssetId String? @db.Uuid
+  logo        Asset?  @relation("CompanyLogo", fields: [logoAssetId], references: [id], onDelete: SetNull)
+
+  defaultCurrency String @default("MAD")
+  defaultLocale   Locale @default(FR)
+
+  // Money and stock policy.
+  priceMode           PriceMode           @default(EXCLUSIVE)
+  roundingMode        RoundingMode        @default(HALF_UP)
+  roundingScale       Int                 @default(2)
+  roundingGranularity RoundingGranularity @default(LINE)
+  negativeStockPolicy NegativeStockPolicy @default(BLOCK)
+
+  defaultWarehouseId String?    @db.Uuid
+  defaultWarehouse   Warehouse? @relation("CompanyDefaultWarehouse", fields: [defaultWarehouseId], references: [id], onDelete: SetNull)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companyAccess   CompanyAccess[]
+  documents       Document[]
+  payments        Payment[]
+  numberSequences NumberSequence[]
+  templateConfigs TemplateConfig[]
+  vatRates        VatRate[]
+  exchangeRates   ExchangeRate[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("companies")
+}
+
+model User {
+  id           String  @id @default(uuid(7)) @db.Uuid
+  email        String  @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  locale       Locale  @default(FR)
+  isActive     Boolean @default(true)
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  createdContacts  Contact[]           @relation("ContactCreatedBy")
+  createdDocuments Document[]          @relation("DocumentCreatedBy")
+  movements        StockMovement[]
+  countSessions    StockCountSession[]
+  payments         Payment[]
+
+  @@map("users")
+}
+
+model Membership {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  userId         String       @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  role      Role     @default(VIEWER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companyAccess CompanyAccess[]
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("memberships")
+}
+
+/// Which legal entities a member may act in. No row for a company means no access.
+model CompanyAccess {
+  id           String     @id @default(uuid(7)) @db.Uuid
+  membershipId String     @db.Uuid
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  companyId    String     @db.Uuid
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, companyId])
+  @@index([companyId])
+  @@map("company_access")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  /// Rotation chain: the token this one replaced, so reuse of an old token is detectable.
+  replacedById String?   @db.Uuid
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  userAgent    String?
+  ipAddress    String?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId      String?      @db.Uuid
+  userId         String?      @db.Uuid
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action     String
+  entityType String
+  entityId   String?
+  /// Before/after payload for the change, trimmed of secrets.
+  diff       Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+/// Replay protection for the mobile outbox: the same key never applies twice.
+model IdempotencyKey {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  key            String   @unique
+  organizationId String   @db.Uuid
+  userId         String?  @db.Uuid
+  endpoint       String
+  requestHash    String
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("idempotency_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Contacts
+// ---------------------------------------------------------------------------
+
+model Contact {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  kind        ContactKind @default(CLIENT)
+  code        String?
+  displayName String
+  legalName   String?
+
+  ice     String?
+  rc      String?
+  taxId   String?
+  patente String?
+
+  email   String?
+  phone   String?
+  phone2  String?
+  website String?
+
+  paymentTerm    PaymentTerm @default(IMMEDIATE)
+  paymentTermDays Int?
+  creditLimit    Decimal?    @db.Decimal(18, 2)
+  defaultCurrency String     @default("MAD")
+  defaultLocale   Locale?
+  vatExempt      Boolean     @default(false)
+
+  priceListId String?    @db.Uuid
+  priceList   PriceList? @relation(fields: [priceListId], references: [id], onDelete: SetNull)
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  createdById String?  @db.Uuid
+  createdBy   User?    @relation("ContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  addresses ContactAddress[]
+  people    ContactPerson[]
+  documents Document[]
+  payments  Payment[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, kind])
+  @@index([organizationId, displayName])
+  @@map("contacts")
+}
+
+model ContactAddress {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  contactId String  @db.Uuid
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  kind         AddressKind @default(BILLING)
+  label        String?
+  addressLine1 String
+  addressLine2 String?
+  city         String?
+  postalCode   String?
+  country      String      @default("MA")
+  isDefault    Boolean     @default(false)
+
+  billingDocuments  Document[] @relation("DocumentBillingAddress")
+  shippingDocuments Document[] @relation("DocumentShippingAddress")
+
+  @@index([contactId, kind])
+  @@map("contact_addresses")
+}
+
+model ContactPerson {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  contactId String  @db.Uuid
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  fullName String
+  role     String?
+  email    String?
+  phone    String?
+
+  @@index([contactId])
+  @@map("contact_people")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model Unit {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  code      String
+  name      String
+  precision Int    @default(0)
+
+  products Product[]
+
+  @@unique([organizationId, code])
+  @@map("units")
+}
+
+/// A variant dimension: Color, Size, Material, Model, ...
+model AttributeType {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name      String
+  code      String
+  sortOrder Int    @default(0)
+
+  values           AttributeValue[]
+  productAttributes ProductAttribute[]
+
+  @@unique([organizationId, code])
+  @@map("attribute_types")
+}
+
+model AttributeValue {
+  id              String        @id @default(uuid(7)) @db.Uuid
+  attributeTypeId String        @db.Uuid
+  attributeType   AttributeType @relation(fields: [attributeTypeId], references: [id], onDelete: Cascade)
+
+  value     String
+  /// Hex swatch for colour-like attributes, shown in the variant grid.
+  colorHex  String?
+  sortOrder Int     @default(0)
+
+  variantValues VariantAttributeValue[]
+
+  @@unique([attributeTypeId, value])
+  @@map("attribute_values")
+}
+
+model Product {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  reference   String?
+  description String?
+  category    String?
+  brand       String?
+
+  unitId String? @db.Uuid
+  unit   Unit?   @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  defaultVatRate Decimal @default(20) @db.Decimal(6, 3)
+
+  /// False for a simple product, which still gets exactly one variant row so
+  /// that stock, pricing and document lines have one uniform shape.
+  isVariantManaged Boolean @default(true)
+  isService        Boolean @default(false)
+  isActive         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attributes ProductAttribute[]
+  variants   ProductVariant[]
+  images     ProductImage[]
+
+  @@index([organizationId, name])
+  @@index([organizationId, category])
+  @@map("products")
+}
+
+/// Which attribute dimensions this product varies on, and in what order.
+model ProductAttribute {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  productId String        @db.Uuid
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attributeTypeId String  @db.Uuid
+  attributeType   AttributeType @relation(fields: [attributeTypeId], references: [id], onDelete: Cascade)
+  sortOrder Int           @default(0)
+
+  @@unique([productId, attributeTypeId])
+  @@map("product_attributes")
+}
+
+model ProductImage {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  productId String  @db.Uuid
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  assetId   String  @db.Uuid
+  asset     Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  sortOrder Int     @default(0)
+
+  @@unique([productId, assetId])
+  @@map("product_images")
+}
+
+model ProductVariant {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  productId String  @db.Uuid
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  sku     String
+  barcode String?
+  /// Cached "Red / L" label so lists and PDFs do not have to join attributes.
+  variantLabel String?
+
+  /// Standard cost: what the buyer expects to pay. The *actual* valuation is
+  /// StockLevel.averageCost, per warehouse, derived from real receipts.
+  costPrice    Decimal @default(0) @db.Decimal(18, 6)
+  sellingPrice Decimal @default(0) @db.Decimal(18, 6)
+
+  minStockThreshold Decimal @default(0) @db.Decimal(18, 6)
+  weightGrams       Int?
+
+  imageAssetId String? @db.Uuid
+  imageAsset   Asset?  @relation("VariantImage", fields: [imageAssetId], references: [id], onDelete: SetNull)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attributeValues VariantAttributeValue[]
+  stockLevels     StockLevel[]
+  movements       StockMovement[]
+  reservations    StockReservation[]
+  documentLines   DocumentLine[]
+  priceListItems  PriceListItem[]
+  countLines      StockCountLine[]
+  transferLines   StockTransferLine[]
+
+  @@unique([productId, sku])
+  @@index([sku])
+  @@index([barcode])
+  @@map("product_variants")
+}
+
+model VariantAttributeValue {
+  variantId        String         @db.Uuid
+  variant          ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  attributeValueId String         @db.Uuid
+  attributeValue   AttributeValue @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+
+  @@id([variantId, attributeValueId])
+  @@map("variant_attribute_values")
+}
+
+model PriceList {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name     String
+  currency String  @default("MAD")
+  isActive Boolean @default(true)
+
+  items    PriceListItem[]
+  contacts Contact[]
+
+  @@unique([organizationId, name])
+  @@map("price_lists")
+}
+
+model PriceListItem {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  priceListId String         @db.Uuid
+  priceList   PriceList      @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  variantId   String         @db.Uuid
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  price            Decimal  @db.Decimal(18, 6)
+  minQuantity      Decimal  @default(0) @db.Decimal(18, 6)
+  discountPercent  Decimal? @db.Decimal(6, 3)
+
+  @@unique([priceListId, variantId, minQuantity])
+  @@map("price_list_items")
+}
+
+// ---------------------------------------------------------------------------
+// Inventory
+// ---------------------------------------------------------------------------
+
+model Warehouse {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  code    String
+  name    String
+  address String?
+  city    String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  stockLevels     StockLevel[]
+  movements       StockMovement[]
+  reservations    StockReservation[]
+  documents       Document[]
+  documentLines   DocumentLine[]
+  defaultForCompanies Company[]        @relation("CompanyDefaultWarehouse")
+  countSessions   StockCountSession[]
+  transfersFrom   StockTransfer[]      @relation("TransferSource")
+  transfersTo     StockTransfer[]      @relation("TransferDestination")
+
+  @@unique([organizationId, code])
+  @@map("warehouses")
+}
+
+/// Materialised on-hand and reserved quantities.
+/// The ledger is the truth; this row is a cache kept in the same transaction
+/// and re-verified by a nightly reconcile job.
+model StockLevel {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  variantId   String         @db.Uuid
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouseId String         @db.Uuid
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  onHand   Decimal @default(0) @db.Decimal(18, 6)
+  reserved Decimal @default(0) @db.Decimal(18, 6)
+  /// Expected inbound from validated purchase orders not yet received.
+  incoming Decimal @default(0) @db.Decimal(18, 6)
+  /// Weighted average cost in this warehouse, recomputed on every receipt.
+  /// Outbound movements stamp it onto the ledger row so margin reporting stays
+  /// correct after the average moves on.
+  averageCost Decimal @default(0) @db.Decimal(18, 6)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([variantId, warehouseId])
+  @@index([warehouseId])
+  @@map("stock_levels")
+}
+
+/// Append-only ledger. Never updated, never deleted: a mistake is corrected by
+/// a compensating row so the history of a variant always reconstructs.
+model StockMovement {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  variantId   String         @db.Uuid
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  warehouseId String         @db.Uuid
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  /// Signed: negative leaves the warehouse, positive enters it.
+  quantity  Decimal        @db.Decimal(18, 6)
+  direction StockDirection
+  type      MovementType
+  reason    AdjustmentReason?
+
+  /// Unit cost at the moment of the movement, so margin reporting stays
+  /// historically correct after the average cost moves on.
+  unitCost        Decimal? @db.Decimal(18, 6)
+  /// On-hand after applying this row, for a readable ledger view.
+  balanceAfter    Decimal  @db.Decimal(18, 6)
+  averageCostAfter Decimal? @db.Decimal(18, 6)
+
+  documentId     String?       @db.Uuid
+  document       Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentLineId String?       @db.Uuid
+  documentLine   DocumentLine? @relation(fields: [documentLineId], references: [id], onDelete: SetNull)
+
+  countLineId    String?         @db.Uuid
+  countLine      StockCountLine? @relation(fields: [countLineId], references: [id], onDelete: SetNull)
+  transferLineId String?         @db.Uuid
+  transferLine   StockTransferLine? @relation(fields: [transferLineId], references: [id], onDelete: SetNull)
+
+  /// The compensating row this one reverses, when cancelling a document.
+  reversesMovementId String? @db.Uuid
+
+  note      String?
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([variantId, warehouseId, createdAt])
+  @@index([documentId])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
+/// A hold placed by a validated order. Not part of the ledger: it changes
+/// availability, never on-hand.
+model StockReservation {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  variantId   String         @db.Uuid
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouseId String         @db.Uuid
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  quantity         Decimal           @db.Decimal(18, 6)
+  releasedQuantity Decimal           @default(0) @db.Decimal(18, 6)
+  direction        StockDirection
+  status           ReservationStatus @default(ACTIVE)
+
+  documentId     String       @db.Uuid
+  document       Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentLineId String       @db.Uuid
+  documentLine   DocumentLine @relation(fields: [documentLineId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime  @default(now())
+  releasedAt DateTime?
+
+  @@index([variantId, warehouseId, status])
+  @@index([documentLineId])
+  @@map("stock_reservations")
+}
+
+model StockCountSession {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  warehouseId    String       @db.Uuid
+  warehouse      Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  reference String
+  /// Blind counts hide the expected quantity from the counter.
+  isBlind   Boolean            @default(true)
+  status    CountSessionStatus @default(OPEN)
+  note      String?
+
+  startedById String?  @db.Uuid
+  startedBy   User?    @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  startedAt   DateTime @default(now())
+  postedAt    DateTime?
+
+  lines StockCountLine[]
+
+  @@unique([organizationId, reference])
+  @@index([warehouseId, status])
+  @@map("stock_count_sessions")
+}
+
+model StockCountLine {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  sessionId String            @db.Uuid
+  session   StockCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  variantId String            @db.Uuid
+  variant   ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  /// Snapshot of on-hand when the line was opened, for variance reporting.
+  expectedQuantity Decimal  @db.Decimal(18, 6)
+  countedQuantity  Decimal? @db.Decimal(18, 6)
+  note             String?
+  countedAt        DateTime?
+
+  movements StockMovement[]
+
+  @@unique([sessionId, variantId])
+  @@map("stock_count_lines")
+}
+
+model StockTransfer {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  reference     String
+  sourceWarehouseId      String    @db.Uuid
+  sourceWarehouse        Warehouse @relation("TransferSource", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  destinationWarehouseId String    @db.Uuid
+  destinationWarehouse   Warehouse @relation("TransferDestination", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+
+  status TransferStatus @default(DRAFT)
+  note   String?
+
+  createdAt  DateTime  @default(now())
+  shippedAt  DateTime?
+  receivedAt DateTime?
+
+  lines StockTransferLine[]
+
+  @@unique([organizationId, reference])
+  @@map("stock_transfers")
+}
+
+model StockTransferLine {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  transferId String        @db.Uuid
+  transfer   StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  variantId  String        @db.Uuid
+  variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  quantity Decimal @db.Decimal(18, 6)
+
+  movements StockMovement[]
+
+  @@unique([transferId, variantId])
+  @@map("stock_transfer_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Documents
+// ---------------------------------------------------------------------------
+
+model Document {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  type DocumentType
+  side DocumentSide
+
+  /// Allocated at validation, not at draft creation, so drafts burn no numbers.
+  number     String?
+  numberYear Int?
+  sequence   Int?
+
+  lifecycle  Lifecycle  @default(DRAFT)
+  fulfilment Fulfilment @default(PENDING)
+  settlement Settlement @default(NOT_APPLICABLE)
+
+  contactId String  @db.Uuid
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  billingAddressId  String?         @db.Uuid
+  billingAddress    ContactAddress? @relation("DocumentBillingAddress", fields: [billingAddressId], references: [id], onDelete: SetNull)
+  shippingAddressId String?         @db.Uuid
+  shippingAddress   ContactAddress? @relation("DocumentShippingAddress", fields: [shippingAddressId], references: [id], onDelete: SetNull)
+
+  warehouseId String?    @db.Uuid
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  issueDate    DateTime  @default(now()) @db.Date
+  dueDate      DateTime? @db.Date
+  validUntil   DateTime? @db.Date
+  deliveryDate DateTime? @db.Date
+
+  currency     String  @default("MAD")
+  exchangeRate Decimal @default(1) @db.Decimal(18, 8)
+  locale       Locale?
+
+  priceMode           PriceMode           @default(EXCLUSIVE)
+  roundingMode        RoundingMode        @default(HALF_UP)
+  roundingScale       Int                 @default(2)
+  roundingGranularity RoundingGranularity @default(LINE)
+
+  globalDiscountKind  DiscountKind?
+  globalDiscountValue Decimal?      @db.Decimal(18, 6)
+  shippingAmount      Decimal?      @db.Decimal(18, 2)
+  shippingVatRate     Decimal?      @db.Decimal(6, 3)
+
+  // Totals, computed by @mizmar/core and stored for listing and reporting.
+  subtotalGross      Decimal @default(0) @db.Decimal(18, 2)
+  totalLineDiscounts Decimal @default(0) @db.Decimal(18, 2)
+  subtotalNet        Decimal @default(0) @db.Decimal(18, 2)
+  globalDiscount     Decimal @default(0) @db.Decimal(18, 2)
+  totalExclVat       Decimal @default(0) @db.Decimal(18, 2)
+  totalVat           Decimal @default(0) @db.Decimal(18, 2)
+  totalInclVat       Decimal @default(0) @db.Decimal(18, 2)
+  /// VAT base and amount per rate, as computed at validation.
+  vatBreakdown       Json?
+  paidAmount         Decimal @default(0) @db.Decimal(18, 2)
+
+  /// Credit notes only: whether the returned goods went back into stock.
+  returnToStock Boolean @default(false)
+
+  reference    String?
+  projectName  String?
+  notes        String?
+  terms        String?
+  internalMemo String?
+
+  templateConfigId String?         @db.Uuid
+  templateConfig   TemplateConfig? @relation(fields: [templateConfigId], references: [id], onDelete: SetNull)
+
+  createdById String?   @db.Uuid
+  createdBy   User?     @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  validatedAt DateTime?
+  sentAt      DateTime?
+  cancelledAt DateTime?
+  cancelReason String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lines         DocumentLine[]
+  linksFrom     DocumentLink[]      @relation("LinkSource")
+  linksTo       DocumentLink[]      @relation("LinkTarget")
+  snapshots     DocumentSnapshot[]
+  movements     StockMovement[]
+  reservations  StockReservation[]
+  allocations   PaymentAllocation[]
+
+  @@unique([companyId, type, number])
+  @@index([companyId, type, lifecycle])
+  @@index([companyId, contactId])
+  @@index([companyId, issueDate])
+  @@index([dueDate, settlement])
+  @@map("documents")
+}
+
+model DocumentLine {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  variantId String?         @db.Uuid
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  warehouseId String?    @db.Uuid
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  /// Snapshot of what was sold, so a later SKU rename never rewrites history.
+  sku          String?
+  description  String
+  variantLabel String?
+  unitCode     String?
+
+  quantity  Decimal @db.Decimal(18, 6)
+  unitPrice Decimal @default(0) @db.Decimal(18, 6)
+  unitCost  Decimal? @db.Decimal(18, 6)
+  vatRate   Decimal @default(20) @db.Decimal(6, 3)
+
+  discountKind  DiscountKind?
+  discountValue Decimal?      @db.Decimal(18, 6)
+
+  // Per-line money, computed by @mizmar/core.
+  lineGross           Decimal @default(0) @db.Decimal(18, 2)
+  lineDiscount        Decimal @default(0) @db.Decimal(18, 2)
+  lineNet             Decimal @default(0) @db.Decimal(18, 2)
+  globalDiscountShare Decimal @default(0) @db.Decimal(18, 2)
+  taxableBase         Decimal @default(0) @db.Decimal(18, 2)
+  vatAmount           Decimal @default(0) @db.Decimal(18, 2)
+  lineTotal           Decimal @default(0) @db.Decimal(18, 2)
+
+  /// Running total of what downstream documents drew from this line.
+  /// Drives remaining quantity, fulfilment status and the residual stock rule.
+  drawnQuantity Decimal @default(0) @db.Decimal(18, 6)
+
+  isNote    Boolean @default(false)
+  isService Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  sources      DocumentLineSource[] @relation("DrawTarget")
+  drawnBy      DocumentLineSource[] @relation("DrawSource")
+  movements    StockMovement[]
+  reservations StockReservation[]
+
+  @@index([documentId, sortOrder])
+  @@index([variantId])
+  @@map("document_lines")
+}
+
+/// Document-to-document provenance, for the "converted from / converted to"
+/// panel and for navigating a chain.
+model DocumentLink {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  sourceDocumentId String   @db.Uuid
+  sourceDocument   Document @relation("LinkSource", fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  targetDocumentId String   @db.Uuid
+  targetDocument   Document @relation("LinkTarget", fields: [targetDocumentId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+
+  @@unique([sourceDocumentId, targetDocumentId])
+  @@index([targetDocumentId])
+  @@map("document_links")
+}
+
+/// Line-level provenance with the quantity drawn. This is what makes partial
+/// delivery, split invoicing and the no-double-deduction rule possible.
+model DocumentLineSource {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  targetLineId String       @db.Uuid
+  targetLine   DocumentLine @relation("DrawTarget", fields: [targetLineId], references: [id], onDelete: Cascade)
+  sourceLineId String       @db.Uuid
+  sourceLine   DocumentLine @relation("DrawSource", fields: [sourceLineId], references: [id], onDelete: Restrict)
+
+  /// Denormalised so the stock resolver can decide whether this draw already
+  /// moved stock without loading the source document.
+  sourceDocumentId   String       @db.Uuid
+  sourceDocumentType DocumentType
+
+  quantity  Decimal  @db.Decimal(18, 6)
+  createdAt DateTime @default(now())
+
+  @@unique([targetLineId, sourceLineId])
+  @@index([sourceLineId])
+  @@map("document_line_sources")
+}
+
+/// Frozen payload plus the template version used, so a reprint a year later is
+/// identical even after the branding changed.
+model DocumentSnapshot {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  version              Int
+  payload              Json
+  templateConfigHash   String
+  templateConfigId     String? @db.Uuid
+  locale               Locale
+  /// Object-storage key of the rendered PDF, if it has been rendered yet.
+  pdfStorageKey        String?
+  pdfRenderedAt        DateTime?
+  pdfByteSize          Int?
+
+  createdAt DateTime @default(now())
+
+  @@unique([documentId, version])
+  @@map("document_snapshots")
+}
+
+// ---------------------------------------------------------------------------
+// Settlement
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  contactId String  @db.Uuid
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  direction PaymentDirection
+  method    PaymentMethod    @default(BANK_TRANSFER)
+  reference String?
+
+  amount       Decimal  @db.Decimal(18, 2)
+  currency     String   @default("MAD")
+  exchangeRate Decimal  @default(1) @db.Decimal(18, 8)
+  paidAt       DateTime @db.Date
+  /// Cheques and bills of exchange clear later than they are recorded.
+  clearedAt    DateTime? @db.Date
+  note         String?
+
+  createdById String?  @db.Uuid
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  allocations PaymentAllocation[]
+
+  @@index([companyId, paidAt])
+  @@index([contactId])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  paymentId  String   @db.Uuid
+  payment    Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  amount    Decimal  @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+
+  @@unique([paymentId, documentId])
+  @@index([documentId])
+  @@map("payment_allocations")
+}
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+model VatRate {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  rate      Decimal @db.Decimal(6, 3)
+  label     String
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  @@unique([companyId, rate])
+  @@map("vat_rates")
+}
+
+/// Gap-free counter per company, document type and year. Allocation takes a
+/// Postgres advisory lock on the same key inside the validation transaction.
+model NumberSequence {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  type    DocumentType
+  year    Int
+  prefix  String
+  format  String       @default("{PREFIX}-{YYYY}-{SEQ:4}")
+  counter Int          @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, type, year])
+  @@map("number_sequences")
+}
+
+/// A named, versioned document style. Bumping `version` is what makes a
+/// reprint reproducible: a snapshot records the version it was rendered under.
+model TemplateConfig {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  name String
+  /// Null means this template is the company default for every type.
+  documentType DocumentType?
+  isDefault    Boolean       @default(false)
+
+  version Int  @default(1)
+  /// Colours, fonts, element toggles, pagination and locale options.
+  config  Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents Document[]
+
+  @@unique([companyId, name])
+  @@index([companyId, documentType, isDefault])
+  @@map("template_configs")
+}
+
+model ExchangeRate {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  baseCurrency  String
+  quoteCurrency String
+  rate          Decimal  @db.Decimal(18, 8)
+  validFrom     DateTime @db.Date
+
+  @@unique([companyId, baseCurrency, quoteCurrency, validFrom])
+  @@map("exchange_rates")
+}
+
+model Asset {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  kind        AssetKind
+  storageKey  String    @unique
+  fileName    String
+  contentType String
+  byteSize    Int
+  width       Int?
+  height      Int?
+
+  createdAt DateTime @default(now())
+
+  companyLogos  Company[]      @relation("CompanyLogo")
+  variantImages ProductVariant[] @relation("VariantImage")
+  productImages ProductImage[]
+
+  @@index([organizationId, kind])
+  @@map("assets")
+}

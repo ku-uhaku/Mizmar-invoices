@@ -1,0 +1,188 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * Declared once here and consumed by Tailwind utilities, so the palette can be
+ * retuned without touching components. Dark mode redefines the same names
+ * rather than adding a parallel set of classes.
+ */
+@theme {
+  --color-canvas: #f4f5f3;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f0f2ef;
+  --color-border: #e3e6e2;
+  --color-border-strong: #cdd3cd;
+
+  --color-ink: #15211d;
+  --color-ink-muted: #5b6861;
+  --color-ink-subtle: #8a968f;
+
+  --color-brand: #0f766e;
+  --color-brand-strong: #0b5c56;
+  --color-brand-soft: #e3f3f0;
+
+  --color-positive: #15803d;
+  --color-positive-soft: #e8f6ec;
+  --color-warning: #a85a07;
+  --color-warning-soft: #fdf1de;
+  --color-danger: #c0292b;
+  --color-danger-soft: #fdecec;
+  --color-info: #1d5fd1;
+  --color-info-soft: #e9f0fd;
+
+  /* The sidebar stays dark in both themes: it anchors the layout. */
+  --color-side: #0f1c19;
+  --color-side-raised: #172926;
+  --color-side-border: #22372f;
+  --color-side-ink: #e6efec;
+  --color-side-muted: #8da39b;
+
+  --font-sans: var(--font-inter), 'Inter', var(--font-arabic), ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', 'Noto Sans Arabic', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+
+  --radius-card: 0.875rem;
+
+  --shadow-card: 0 1px 2px rgb(16 24 20 / 0.04), 0 1px 1px rgb(16 24 20 / 0.03);
+  --shadow-pop: 0 12px 32px -8px rgb(16 24 20 / 0.22), 0 2px 6px rgb(16 24 20 / 0.08);
+
+  --animate-pop-in: pop-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-up: slide-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: fade-in 140ms ease-out;
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes shimmer {
+  to { background-position-x: -200%; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-canvas: #0a1210;
+    --color-surface: #111d1a;
+    --color-surface-muted: #182622;
+    --color-border: #23352f;
+    --color-border-strong: #31473f;
+
+    --color-ink: #e8f0ed;
+    --color-ink-muted: #9db0a8;
+    --color-ink-subtle: #6f847b;
+
+    --color-brand: #2dd4bf;
+    --color-brand-strong: #5eead4;
+    --color-brand-soft: #0f2e2a;
+
+    --color-positive: #4ade80;
+    --color-positive-soft: #0f2a1a;
+    --color-warning: #fbbf24;
+    --color-warning-soft: #2b2110;
+    --color-danger: #f87171;
+    --color-danger-soft: #2c1414;
+    --color-info: #7aa7f7;
+    --color-info-soft: #101f3d;
+
+    --color-side: #08100e;
+    --color-side-raised: #12211d;
+    --color-side-border: #1b2c27;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-canvas: #0a1210;
+  --color-surface: #111d1a;
+  --color-surface-muted: #182622;
+  --color-border: #23352f;
+  --color-border-strong: #31473f;
+  --color-ink: #e8f0ed;
+  --color-ink-muted: #9db0a8;
+  --color-ink-subtle: #6f847b;
+  --color-brand: #2dd4bf;
+  --color-brand-strong: #5eead4;
+  --color-brand-soft: #0f2e2a;
+  --color-positive: #4ade80;
+  --color-positive-soft: #0f2a1a;
+  --color-warning: #fbbf24;
+  --color-warning-soft: #2b2110;
+  --color-danger: #f87171;
+  --color-danger-soft: #2c1414;
+  --color-info: #7aa7f7;
+  --color-info-soft: #101f3d;
+  --color-side: #08100e;
+  --color-side-raised: #12211d;
+  --color-side-border: #1b2c27;
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-brand) 25%, transparent);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-surface-muted) 25%, var(--color-border) 37%, var(--color-surface-muted) 63%);
+  background-size: 300% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Numbers in tables must line up; proportional digits make columns jitter. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Arabic mirrors the whole app, not just the text. */
+[dir='rtl'] .flip-x {
+  transform: scaleX(-1);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Tables sit inside cards: the last row needs no rule under it. */
+tbody tr:last-child > td {
+  border-bottom-width: 0;
+}
+tbody tr {
+  transition: background-color 120ms;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

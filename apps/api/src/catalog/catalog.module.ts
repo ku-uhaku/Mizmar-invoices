@@ -1,0 +1,13 @@
+import { Module } from '@nestjs/common';
+import { InventoryModule } from '../inventory/inventory.module';
+import { CatalogController } from './catalog.controller';
+import { CatalogService } from './catalog.service';
+
+@Module({
+  // Opening stock is written through the stock ledger, not inserted directly.
+  imports: [InventoryModule],
+  controllers: [CatalogController],
+  providers: [CatalogService],
+  exports: [CatalogService],
+})
+export class CatalogModule {}

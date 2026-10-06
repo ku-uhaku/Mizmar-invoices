@@ -1,0 +1,67 @@
+name: mizmar
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: mizmar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mizmar
+      POSTGRES_PASSWORD: mizmar
+      POSTGRES_DB: mizmar
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mizmar -d mizmar']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: mizmar-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - '6380:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # S3-compatible object storage for logos, signatures and rendered PDFs.
+  # SeaweedFS rather than MinIO: MinIO's images are no longer anonymously
+  # pullable. Buckets are created by the API on boot, not by an init container.
+  s3:
+    image: chrislusf/seaweedfs:latest
+    container_name: mizmar-s3
+    restart: unless-stopped
+    command: server -dir=/data -ip=0.0.0.0 -s3 -s3.port=8333 -master.volumeSizeLimitMB=256
+    ports:
+      - '8333:8333'
+      - '9333:9333'
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O- http://localhost:9333/cluster/status || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mizmar-mailpit
+    restart: unless-stopped
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  postgres-data:
+  redis-data:
+  s3-data:
