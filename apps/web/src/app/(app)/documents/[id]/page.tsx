@@ -10,6 +10,7 @@ import { useT } from '@/lib/i18n/provider';
 import { DocBadges } from '@/components/doc-badges';
 import { DocumentEditor } from '@/components/document-editor';
 import { DocumentView } from '@/components/document-view';
+import { DocumentHistory } from '@/components/audit-log';
 import { ConvertDialog } from '@/components/dialogs/convert-dialog';
 import { EmailDialog } from '@/components/dialogs/email-dialog';
 import { PaymentDialog } from '@/components/dialogs/payment-dialog';
@@ -90,6 +91,21 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
     },
     onError: (cause) =>
       setActionError(cause instanceof ApiError ? cause.message : t('Duplication impossible')),
+  });
+
+  // Additive: turn this invoice into a schedule (its lines become the template).
+  const makeRecurring = useMutation({
+    mutationFn: async () => unwrap(await api.recurring.fromDocument({ params: { id }, body: {} })),
+    onSuccess: (created) => {
+      toast.success(
+        t('Facture récurrente créée, première échéance le {date}', {
+          date: created.nextRunAt ?? '—',
+        }),
+      );
+      router.push('/recurring');
+    },
+    onError: (cause) =>
+      setActionError(cause instanceof ApiError ? cause.message : t('Action impossible')),
   });
 
   if (query.isPending) {
@@ -240,6 +256,18 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
                   >
                     {t('Dupliquer')}
                   </MenuItem>
+                  {document.type === 'SALES_INVOICE' && (
+                    <MenuItem
+                      icon="clock"
+                      disabled={makeRecurring.isPending}
+                      onClick={() => {
+                        close();
+                        makeRecurring.mutate();
+                      }}
+                    >
+                      {t('Créer une facture récurrente')}
+                    </MenuItem>
+                  )}
                   {document.canCancel && !isCancelled && (
                     <>
                       <div className="my-1 border-t border-border" />
@@ -283,6 +311,10 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
       )}
 
       {isDraft ? <DocumentEditor document={document} /> : <DocumentView document={document} />}
+
+      <div className="mt-4">
+        <DocumentHistory documentId={document.id} />
+      </div>
 
       <Dialog
         open={cancelOpen}

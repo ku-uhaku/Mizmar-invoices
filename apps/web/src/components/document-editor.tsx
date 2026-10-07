@@ -17,6 +17,7 @@ import {
   Field,
   IconButton,
   Input,
+  Select,
   NumberInput,
   Textarea,
   toast,
@@ -48,6 +49,8 @@ interface EditLine {
   /** Quantity already drawn downstream; a converted line cannot go below it. */
   drawnQuantity: string;
   sourceReference: string | null;
+  /** True once the user typed a price: automatic price resolution then leaves the line alone. */
+  priceTouched?: boolean;
 }
 
 function toEditLine(line: DocumentDetail['lines'][number]): EditLine {
@@ -95,6 +98,7 @@ export function DocumentEditor({ document }: { document: DocumentDetail }) {
     document.globalDiscountValue ?? '',
   );
   const [returnToStock, setReturnToStock] = useState(document.returnToStock);
+  const [currency, setCurrency] = useState(document.currency);
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
 
@@ -122,6 +126,75 @@ export function DocumentEditor({ document }: { document: DocumentDetail }) {
     queryKey: ['warehouses'],
     queryFn: async () => unwrap(await api.inventory.listWarehouses()),
   });
+
+  const company = useQuery({
+    queryKey: ['company', document.companyId],
+    queryFn: async () => unwrap(await api.companies.get({ params: { id: document.companyId } })),
+  });
+  const companyCurrency = company.data?.defaultCurrency ?? document.currency;
+  const rateTable = useQuery({
+    queryKey: ['exchange-rates', 'all'],
+    queryFn: async () => unwrap(await api.pricing.listExchangeRates({ query: {} })),
+  });
+  const currencyOptions = useMemo(() => {
+    const codes = new Set<string>([companyCurrency, document.currency, currency]);
+    for (const row of rateTable.data ?? []) {
+      codes.add(row.baseCurrency);
+      codes.add(row.quoteCurrency);
+    }
+    return [...codes].sort();
+  }, [companyCurrency, document.currency, currency, rateTable.data]);
+  const rateHint = useQuery({
+    queryKey: ['exchange-rate', currency, companyCurrency, issueDate],
+    queryFn: async () =>
+      unwrap(
+        await api.pricing.lookupExchangeRate({
+          query: { base: currency, quote: companyCurrency, date: issueDate },
+        }),
+      ),
+    enabled: currency !== companyCurrency,
+    retry: false,
+  });
+
+  /**
+   * Resolve a unit price on the server (contact list > default list > base
+   * price, converted to the document currency). A line the user priced by hand
+   * is never overwritten.
+   */
+  async function resolveInto(key: string, variantId: string, quantity: string, cur: string) {
+    try {
+      const resolved = unwrap(
+        await api.pricing.resolve({
+          query: { variantId, quantity, currency: cur, date: issueDate, ...(contactId ? { contactId } : {}) },
+        }),
+      );
+      setLines((current) =>
+        current.map((line) =>
+          line.key !== key || line.priceTouched
+            ? line
+            : {
+                ...line,
+                unitPrice: resolved.unitPrice,
+                ...(resolved.discountPercent && !line.discountValue
+                  ? { discountKind: 'PERCENT' as const, discountValue: resolved.discountPercent }
+                  : {}),
+              },
+        ),
+      );
+    } catch (cause) {
+      toast.error(cause instanceof ApiError ? cause.message : t('Prix introuvable'));
+    }
+  }
+
+  function changeCurrency(next: string) {
+    setCurrency(next);
+    // Existing prices are in the old currency: re-price every line the user did not set by hand.
+    for (const line of lines) {
+      if (line.variantId && !line.priceTouched && !line.isNote) {
+        void resolveInto(line.key, line.variantId, line.quantity || '1', next);
+      }
+    }
+  }
 
   /**
    * Totals recomputed locally on every keystroke with the same engine the API
@@ -158,10 +231,12 @@ export function DocumentEditor({ document }: { document: DocumentDetail }) {
   }
 
   function addVariant(variant: VariantSearchResult) {
+    const key = `new-${crypto.randomUUID()}`;
+    void resolveInto(key, variant.variantId, '1', currency);
     setLines((current) => [
       ...current,
       {
-        key: `new-${crypto.randomUUID()}`,
+        key,
         variantId: variant.variantId,
         warehouseId: warehouseId || null,
         description: variant.productName,
@@ -169,7 +244,8 @@ export function DocumentEditor({ document }: { document: DocumentDetail }) {
         sku: variant.sku,
         unitCode: variant.unitCode,
         quantity: '1',
-        unitPrice: variant.sellingPrice ?? '0',
+        // Base price is in the company currency; the resolver replaces it momentarily.
+        unitPrice: currency === companyCurrency ? (variant.sellingPrice ?? '0') : '0',
         vatRate: variant.vatRate,
         discountKind: null,
         discountValue: '',
@@ -274,6 +350,7 @@ export function DocumentEditor({ document }: { document: DocumentDetail }) {
           body: {
             contactId,
             issueDate,
+            ...(currency !== document.currency ? { currency } : {}),
             dueDate: dueDate || null,
             validUntil: validUntil || null,
             warehouseId: warehouseId || null,
@@ -318,7 +395,6 @@ export function DocumentEditor({ document }: { document: DocumentDetail }) {
     },
   });
 
-  const currency = document.currency;
   const showErr = <T,>(value: T | undefined) => (attempted ? value : undefined);
   const cancelHref = `/documents?type=${document.type}`;
   const LINE_GRID = '@3xl:grid-cols-[minmax(0,1fr)_5.5rem_6.5rem_8.5rem_4.5rem_6.5rem_2rem]';
@@ -413,6 +489,27 @@ export function DocumentEditor({ document }: { document: DocumentDetail }) {
                   }))}
                   onChange={(value) => setWarehouseId(value)}
                 />
+              </Field>
+
+              <Field
+                label={t('Devise')}
+                hint={
+                  currency === companyCurrency
+                    ? undefined
+                    : rateHint.data
+                      ? `1 ${currency} = ${rateHint.data.rate} ${companyCurrency}`
+                      : rateHint.isError
+                        ? t('Aucun taux de change pour cette devise')
+                        : undefined
+                }
+              >
+                <Select value={currency} onChange={(event) => changeCurrency(event.target.value)}>
+                  {currencyOptions.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </Select>
               </Field>
 
               <Field label="Référence">
@@ -581,7 +678,7 @@ export function DocumentEditor({ document }: { document: DocumentDetail }) {
                             value={line.unitPrice}
                             aria-label="Prix unitaire HT"
                             onChange={(event) =>
-                              update(line.key, { unitPrice: event.target.value })
+                              update(line.key, { unitPrice: event.target.value, priceTouched: true })
                             }
                           />
                         </LineCell>

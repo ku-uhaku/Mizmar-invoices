@@ -11,6 +11,16 @@ import type { Env } from '../config/env';
 import { generateRefreshToken, hashPassword, verifyPassword } from './password';
 import type { AccessTokenPayload } from './jwt.types';
 import type { RequestContext } from '../tenancy/request-context';
+import { MailService } from '../mail/mail.service';
+import {
+  buildResetUrl,
+  generateResetToken,
+  hashResetToken,
+  identifierWhere,
+  isResetTokenUsable,
+  resetTokenExpiry,
+  withinCooldown,
+} from './reset-token';
 
 type SessionUser = z.infer<typeof authSchemas.sessionUser>;
 
@@ -36,15 +46,20 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService<Env, true>,
+    private readonly mail: MailService,
   ) {}
 
   // -------------------------------------------------------------------------
   // Login / refresh / logout
   // -------------------------------------------------------------------------
 
-  async login(email: string, password: string, meta: LoginMeta): Promise<TokenPair & { user: SessionUser }> {
+  async login(
+    identifier: string,
+    password: string,
+    meta: LoginMeta,
+  ): Promise<TokenPair & { user: SessionUser }> {
     const user = await this.prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+      where: identifierWhere(identifier),
       include: { memberships: { orderBy: { createdAt: 'asc' }, take: 1 } },
     });
 
@@ -54,7 +69,7 @@ export class AuthService {
     const passwordOk = await verifyPassword(password, stored);
 
     if (!user || !passwordOk || !user.isActive) {
-      throw AppError.unauthorized('Email or password is incorrect');
+      throw AppError.unauthorized('Email/username or password is incorrect');
     }
 
     const membership = user.memberships[0];
@@ -151,6 +166,83 @@ export class AuthService {
   }
 
   // -------------------------------------------------------------------------
+  // Password reset
+  // -------------------------------------------------------------------------
+
+  /**
+   * Email a reset link. Never reveals whether the account exists: unknown,
+   * inactive and rate-limited requests all return normally.
+   */
+  async forgotPassword(identifier: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: identifierWhere(identifier) });
+    if (!user || !user.isActive) return;
+
+    const latest = await this.prisma.passwordResetToken.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (latest && withinCooldown(latest.createdAt)) return;
+
+    const token = generateResetToken();
+    await this.prisma.passwordResetToken.create({
+      data: { userId: user.id, tokenHash: hashResetToken(token), expiresAt: resetTokenExpiry() },
+    });
+
+    const url = buildResetUrl(this.config.get('WEB_BASE_URL', { infer: true }), token);
+    // Not awaited: SMTP latency must not distinguish existing accounts.
+    void this.mail
+      .send({
+        to: [user.email],
+        subject: 'Reset your Mizmar password',
+        body: [
+          `Hello ${user.fullName},`,
+          '',
+          'We received a request to reset your Mizmar password. Open this link to choose a new one (valid for 1 hour):',
+          '',
+          url,
+          '',
+          'If you did not ask for this, you can ignore this email.',
+        ].join('\n'),
+      })
+      .catch((cause: unknown) => {
+        this.logger.error(`Could not send reset email to user ${user.id}: ${String(cause)}`);
+      });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const row = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash: hashResetToken(token) },
+      include: { user: true },
+    });
+    if (!row || !row.user.isActive || !isResetTokenUsable(row)) {
+      throw AppError.badRequest('INVALID_RESET_TOKEN', 'This reset link is invalid or has expired');
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    const now = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      // Claim the token atomically so a link cannot be used twice concurrently.
+      const claimed = await tx.passwordResetToken.updateMany({
+        where: { id: row.id, usedAt: null },
+        data: { usedAt: now },
+      });
+      if (claimed.count === 0) {
+        throw AppError.badRequest('INVALID_RESET_TOKEN', 'This reset link is invalid or has expired');
+      }
+      await tx.user.update({ where: { id: row.userId }, data: { passwordHash } });
+      await tx.passwordResetToken.updateMany({
+        where: { userId: row.userId, usedAt: null },
+        data: { usedAt: now },
+      });
+      await tx.refreshToken.updateMany({
+        where: { userId: row.userId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Session and request context
   // -------------------------------------------------------------------------
 
@@ -176,6 +268,7 @@ export class AuthService {
     return {
       id: membership.user.id,
       email: membership.user.email,
+      username: membership.user.username,
       fullName: membership.user.fullName,
       locale: membership.user.locale,
       organizationId: membership.organizationId,

@@ -13,7 +13,7 @@ for i in $(seq 1 60); do curl -fsS "$API/health" >/dev/null 2>&1 && break; sleep
 
 say "1. Login"
 LOGIN=$(curl -fsS -X POST "$API/auth/login" -H "$J" \
-  -d '{"email":"owner@mizmar.ma","password":"Mizmar2026!"}')
+  -d '{"identifier":"owner","password":"Mizmar2026!"}')
 TOKEN=$(echo "$LOGIN" | jqr '.accessToken')
 COMPANY=$(echo "$LOGIN" | jqr '.user.companies[] | select(.code=="MZT") | .id')
 echo "   user=$(echo "$LOGIN" | jqr '.user.fullName') role=$(echo "$LOGIN" | jqr '.user.role')"

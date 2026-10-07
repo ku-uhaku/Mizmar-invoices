@@ -56,12 +56,11 @@ export default function Login() {
             <Card>
               <ErrorText>{error}</ErrorText>
               <Field
-                label="Email"
+                label="E-mail ou nom d’utilisateur"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
+                autoComplete="username"
                 placeholder="vous@entreprise.ma"
               />
               <Field

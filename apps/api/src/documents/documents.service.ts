@@ -49,6 +49,7 @@ import { StockService, levelKey, movementTypeFor } from '../inventory/stock.serv
 import { documentInclude, type DocumentWithRelations } from './document-include';
 import { mapDocument, type AvailabilityIndex } from './document.mapper';
 import { NumberingService } from './numbering.service';
+import { PricingService } from '../pricing/pricing.service';
 
 type DocumentDetail = z.infer<typeof documentSchemas.documentDetail>;
 type DocumentListRow = z.infer<typeof documentSchemas.documentListRow>;
@@ -77,6 +78,7 @@ export class DocumentsService {
     private readonly prisma: PrismaService,
     private readonly stock: StockService,
     private readonly numbering: NumberingService,
+    private readonly pricing: PricingService,
   ) {}
 
   // =========================================================================
@@ -188,6 +190,12 @@ export class DocumentsService {
 
     const settings = await this.companySettings(ctx.companyId);
     const contact = await this.loadContact(ctx, body.contactId);
+    const currency = body.currency ?? contact.defaultCurrency ?? settings.defaultCurrency;
+    const issueDay = body.issueDate ?? new Date().toISOString().slice(0, 10);
+    // Foreign-currency documents snapshot the rate (document -> company currency).
+    const exchangeRate =
+      body.exchangeRate ??
+      (await this.pricing.documentRate(ctx.companyId, currency, settings.defaultCurrency, issueDay));
 
     const id = await this.prisma.$transaction(async (tx) => {
       const document = await tx.document.create({
@@ -201,8 +209,8 @@ export class DocumentsService {
           warehouseId: body.warehouseId ?? settings.defaultWarehouseId,
           issueDate: body.issueDate ? new Date(body.issueDate) : new Date(),
           ...this.dateFieldsFor(body, contact),
-          currency: body.currency ?? contact.defaultCurrency ?? settings.defaultCurrency,
-          exchangeRate: toPrismaDecimal(body.exchangeRate ?? '1'),
+          currency,
+          exchangeRate: toPrismaDecimal(exchangeRate),
           locale: body.locale ?? contact.defaultLocale ?? null,
           priceMode: body.priceMode ?? settings.priceMode,
           roundingMode: settings.rounding.mode,
@@ -225,7 +233,12 @@ export class DocumentsService {
         },
       });
 
-      await this.replaceLines(tx, document.id, body.lines ?? [], settings);
+      await this.replaceLines(tx, document.id, body.lines ?? [], settings, {
+        companyId: ctx.companyId,
+        contactId: contact.id,
+        currency,
+        date: issueDay,
+      });
       await this.recomputeTotals(tx, document.id);
       return document.id;
     });
@@ -249,6 +262,19 @@ export class DocumentsService {
       ? await this.loadContact(ctx, body.contactId)
       : await this.loadContact(ctx, existing.contactId);
 
+    // Re-snapshot the rate when the currency or issue date moves and the caller gave none.
+    const currency = body.currency ?? existing.currency;
+    const issueDay = body.issueDate ?? existing.issueDate.toISOString().slice(0, 10);
+    const snapshotRate =
+      !body.exchangeRate && (body.currency !== undefined || body.issueDate !== undefined)
+        ? await this.pricing.documentRate(
+            existing.companyId,
+            currency,
+            settings.defaultCurrency,
+            issueDay,
+          )
+        : null;
+
     await this.prisma.$transaction(async (tx) => {
       await tx.document.update({
         where: { id },
@@ -269,6 +295,7 @@ export class DocumentsService {
             : {}),
           ...(body.currency ? { currency: body.currency } : {}),
           ...(body.exchangeRate ? { exchangeRate: toPrismaDecimal(body.exchangeRate) } : {}),
+          ...(snapshotRate ? { exchangeRate: toPrismaDecimal(snapshotRate) } : {}),
           ...(body.locale !== undefined ? { locale: body.locale } : {}),
           ...(body.priceMode ? { priceMode: body.priceMode } : {}),
           ...(body.globalDiscount !== undefined
@@ -296,7 +323,12 @@ export class DocumentsService {
       });
 
       if (body.lines) {
-        await this.replaceLines(tx, id, body.lines, settings);
+        await this.replaceLines(tx, id, body.lines, settings, {
+          companyId: existing.companyId,
+          contactId: contact.id,
+          currency,
+          date: issueDay,
+        });
       }
       await this.recomputeTotals(tx, id);
     });
@@ -944,6 +976,7 @@ export class DocumentsService {
     documentId: string,
     lines: LineInput[],
     settings: CompanySettings,
+    priceContext?: { companyId: string; contactId: string; currency: string; date: string },
   ): Promise<void> {
     const existing = await tx.documentLine.findMany({
       where: { documentId },
@@ -974,6 +1007,22 @@ export class DocumentsService {
         throw AppError.notFound('Product variant', input.variantId);
       }
 
+      // No explicit price: resolve it (contact list > default list > base price).
+      const resolved =
+        priceContext && variant && input.unitPrice === undefined && !input.isNote
+          ? await this.pricing.resolveUnitPrice(
+              {
+                companyId: priceContext.companyId,
+                contactId: priceContext.contactId,
+                variantId: variant.id,
+                quantity: input.quantity,
+                currency: priceContext.currency,
+                date: priceContext.date,
+              },
+              tx,
+            )
+          : null;
+
       const data = {
         variantId: input.variantId ?? null,
         warehouseId: input.warehouseId ?? settings.defaultWarehouseId,
@@ -985,11 +1034,12 @@ export class DocumentsService {
         variantLabel: variant?.variantLabel ?? null,
         unitCode: variant?.product.unit?.code ?? null,
         quantity: toPrismaDecimal(input.quantity),
-        unitPrice: toPrismaDecimal(input.unitPrice ?? variant?.sellingPrice ?? '0'),
+        unitPrice: toPrismaDecimal(input.unitPrice ?? resolved?.unitPrice ?? variant?.sellingPrice ?? '0'),
         unitCost: toPrismaDecimalOrNull(input.unitCost ?? variant?.costPrice ?? null),
         vatRate: toPrismaDecimal(input.vatRate ?? variant?.product.defaultVatRate ?? '20'),
-        discountKind: input.discount?.kind ?? null,
-        discountValue: toPrismaDecimalOrNull(input.discount?.value),
+        discountKind:
+          input.discount?.kind ?? (resolved?.discountPercent ? ('PERCENT' as const) : null),
+        discountValue: toPrismaDecimalOrNull(input.discount?.value ?? resolved?.discountPercent),
         isNote: input.isNote,
         isService: input.isService || Boolean(variant?.product.isService),
         sortOrder: input.sortOrder ?? index + 1,

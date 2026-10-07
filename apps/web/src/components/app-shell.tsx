@@ -34,6 +34,8 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
       { href: '/documents?type=DELIVERY_NOTE', label: 'Bons de livraison', icon: 'truck', type: 'DELIVERY_NOTE' },
       { href: '/documents?type=SALES_INVOICE', label: 'Factures', icon: 'invoice', type: 'SALES_INVOICE' },
       { href: '/documents?type=CREDIT_NOTE', label: 'Avoirs', icon: 'credit', type: 'CREDIT_NOTE' },
+      { href: '/receivables', label: 'Créances', icon: 'clock' },
+      { href: '/recurring', label: 'Factures récurrentes', icon: 'clock' },
     ],
   },
   {
@@ -54,6 +56,15 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
       { href: '/catalog', label: 'Catalogue', icon: 'tag' },
       { href: '/contacts', label: 'Clients & fournisseurs', icon: 'users' },
       { href: '/payments', label: 'Paiements', icon: 'credit' },
+    ],
+  },
+  {
+    group: 'Rapports',
+    items: [
+      { href: '/reports/sales', label: 'Rapport des ventes', icon: 'trending' },
+      { href: '/reports/vat', label: 'Déclaration de TVA', icon: 'invoice' },
+      { href: '/reports/statements', label: 'Relevé de compte', icon: 'file' },
+      { href: '/reports/stock-valuation', label: 'Valorisation du stock', icon: 'box' },
     ],
   },
   {

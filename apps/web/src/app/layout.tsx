@@ -19,6 +19,9 @@ export const metadata: Metadata = {
   description: 'Invoicing, stock and commercial documents',
 };
 
+// Runs before first paint so a saved theme never flashes the wrong palette.
+const THEME_INIT = `try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`;
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();
   return (
@@ -28,6 +31,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`${inter.variable} ${arabic.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+      </head>
       <body className="min-h-screen antialiased">
         <I18nProvider locale={locale}>
           <Providers>{children}</Providers>

@@ -1,0 +1,25 @@
+export const EN_AUTH: Record<string, string> = {
+  'E-mail ou nom d’utilisateur': 'Email or username',
+  'Identifiant ou mot de passe incorrect.': 'Email/username or password is incorrect.',
+  'Mot de passe oublié ?': 'Forgot password?',
+  'Mot de passe oublié': 'Forgot password',
+  'Saisissez votre e-mail ou nom d’utilisateur ; nous vous enverrons un lien de réinitialisation.':
+    'Enter your email or username and we will send you a reset link.',
+  'Envoyer le lien': 'Send reset link',
+  'Retour à la connexion': 'Back to sign in',
+  'Une erreur est survenue, réessayez.': 'Something went wrong, please try again.',
+  'Si un compte correspond, un e-mail contenant un lien de réinitialisation vient d’être envoyé. Le lien est valable 1 heure.':
+    'If an account matches, an email with a reset link has been sent. The link is valid for 1 hour.',
+  'Nouveau mot de passe': 'New password',
+  'Choisissez un nouveau mot de passe pour votre compte.': 'Choose a new password for your account.',
+  '8 caractères minimum': 'At least 8 characters',
+  'Confirmer le mot de passe': 'Confirm password',
+  'Réinitialiser le mot de passe': 'Reset password',
+  'Les mots de passe ne correspondent pas.': 'The passwords do not match.',
+  'Ce lien est invalide ou a expiré. Demandez-en un nouveau.': 'This link is invalid or has expired. Request a new one.',
+  'Mot de passe mis à jour. Vous pouvez maintenant vous connecter.': 'Password updated. You can now sign in.',
+  'Nom d’utilisateur': 'Username',
+  'Facultatif ; 3 à 32 caractères : a-z, 0-9, point, tiret, souligné': 'Optional; 3 to 32 characters: a-z, 0-9, dot, dash, underscore',
+  'Modifier l’identifiant': 'Edit username',
+  'Nom d’utilisateur (vide pour le retirer)': 'Username (empty to remove)',
+};

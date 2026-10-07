@@ -17,6 +17,8 @@ export const envSchema = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   API_HOST: z.string().default('0.0.0.0'),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
+  /** Public URL of the web app; used for links in emails (password reset). */
+  WEB_BASE_URL: z.string().url().default('http://localhost:3000'),
 
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
@@ -45,6 +47,9 @@ export const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   MAIL_FROM: z.string().default('Mizmar <no-reply@mizmar.local>'),
+
+  // Set to false to stop the recurring-invoice scheduler (tests, local dev).
+  RECURRING_ENABLED: booleanish.default(true),
 });
 
 export type Env = z.infer<typeof envSchema>;

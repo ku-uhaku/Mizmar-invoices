@@ -8,12 +8,12 @@ import { apiBaseUrl, COMPANY_COOKIE, sessionCookies } from '@/lib/session';
  * only the user profile is returned.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  const body = (await request.json()) as { email?: string; password?: string };
+  const body = (await request.json()) as { identifier?: string; email?: string; password?: string };
 
   const upstream = await fetch(`${apiBaseUrl()}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: body.email, password: body.password }),
+    body: JSON.stringify({ identifier: body.identifier ?? body.email, password: body.password }),
     cache: 'no-store',
   });
 

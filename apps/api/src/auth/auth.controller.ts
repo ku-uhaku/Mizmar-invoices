@@ -15,7 +15,7 @@ export class AuthController {
   @TsRestHandler(apiContract.auth.login)
   login(@Req() request: FastifyRequest) {
     return tsRestHandler(apiContract.auth.login, async ({ body }) => {
-      const result = await this.auth.login(body.email, body.password, metaOf(request));
+      const result = await this.auth.login((body.identifier ?? body.email)!, body.password, metaOf(request));
       return { status: 200 as const, body: result };
     });
   }
@@ -33,6 +33,24 @@ export class AuthController {
   logout(@Ctx() ctx: RequestContext) {
     return tsRestHandler(apiContract.auth.logout, async ({ body }) => {
       await this.auth.logout(body.refreshToken, ctx.userId);
+      return { status: 200 as const, body: { ok: true as const } };
+    });
+  }
+
+  @Public()
+  @TsRestHandler(apiContract.auth.forgotPassword)
+  forgotPassword() {
+    return tsRestHandler(apiContract.auth.forgotPassword, async ({ body }) => {
+      await this.auth.forgotPassword(body.identifier);
+      return { status: 200 as const, body: { ok: true as const } };
+    });
+  }
+
+  @Public()
+  @TsRestHandler(apiContract.auth.resetPassword)
+  resetPassword() {
+    return tsRestHandler(apiContract.auth.resetPassword, async ({ body }) => {
+      await this.auth.resetPassword(body.token, body.newPassword);
       return { status: 200 as const, body: { ok: true as const } };
     });
   }

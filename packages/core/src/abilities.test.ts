@@ -13,6 +13,23 @@ const salesInvoice = (over: Record<string, unknown> = {}) =>
     ...over,
   });
 
+describe('audit log access', () => {
+  it.each([
+    ['OWNER', true],
+    ['ADMIN', true],
+    ['ACCOUNTANT', true],
+    ['SALES', false],
+    ['WAREHOUSE', false],
+    ['VIEWER', false],
+  ] as const)('%s read = %s', (role, allowed) => {
+    expect(defineAbilityFor(ctx(role)).can('read', 'AuditLog')).toBe(allowed);
+  });
+
+  it('is not editable by an accountant', () => {
+    expect(defineAbilityFor(ctx('ACCOUNTANT')).can('delete', 'AuditLog')).toBe(false);
+  });
+});
+
 describe('OWNER', () => {
   it('can do everything', () => {
     const ability = defineAbilityFor(ctx('OWNER'));

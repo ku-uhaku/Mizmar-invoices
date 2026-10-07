@@ -1,11 +1,16 @@
 import { initContract } from '@ts-rest/core';
 import { z } from 'zod';
+import * as audit from './audit';
 import * as auth from './auth';
 import * as catalog from './catalog';
 import * as contacts from './contacts';
 import * as dashboard from './dashboard';
 import * as docs from './documents';
+import * as imports from './imports';
 import * as inventory from './inventory';
+import * as receivables from './receivables';
+import * as pricing from './pricing';
+import * as recurring from './recurring';
 import * as settings from './settings';
 import { commonErrorResponses, documentTypeEnum, paginated, uuid } from './common';
 
@@ -59,6 +64,20 @@ const authContract = c.router(
       path: '/change-password',
       body: auth.changePasswordRequest,
       responses: { 200: ok, ...commonErrorResponses },
+    },
+    forgotPassword: {
+      method: 'POST',
+      path: '/forgot-password',
+      body: auth.forgotPasswordRequest,
+      responses: { 200: ok, ...commonErrorResponses },
+      summary: 'Email a reset link; always answers ok so accounts cannot be enumerated',
+    },
+    resetPassword: {
+      method: 'POST',
+      path: '/reset-password',
+      body: auth.resetPasswordRequest,
+      responses: { 200: ok, ...commonErrorResponses },
+      summary: 'Set a new password with an emailed token; revokes every session',
     },
   },
   { pathPrefix: '/auth' },
@@ -594,6 +613,257 @@ const dashboardContract = c.router(
   { pathPrefix: '/dashboard' },
 );
 
+const auditContract = c.router({
+  list: {
+    method: 'GET',
+    path: '/audit-logs',
+    headers: companyHeader,
+    query: audit.auditLogQuery,
+    responses: { 200: audit.auditLogPage, ...commonErrorResponses },
+    summary: 'Activity journal: who did what, newest first',
+  },
+  documentHistory: {
+    method: 'GET',
+    path: '/documents/:id/history',
+    pathParams: idParams,
+    headers: companyHeader,
+    query: audit.auditLogQuery.pick({ cursor: true, limit: true }),
+    responses: { 200: audit.auditLogPage, ...commonErrorResponses },
+    summary: 'Audit entries for one document',
+  },
+});
+const receivablesContract = c.router(
+  {
+    overdue: {
+      method: 'GET',
+      path: '/overdue',
+      headers: companyHeader,
+      query: receivables.overdueQuery,
+      responses: { 200: receivables.overdueResponse, ...commonErrorResponses },
+      summary: 'Unpaid or partially paid sales invoices past their due date',
+    },
+    ageing: {
+      method: 'GET',
+      path: '/ageing',
+      headers: companyHeader,
+      responses: { 200: receivables.ageingResponse, ...commonErrorResponses },
+      summary: 'Per-customer ageing buckets: current, 1-30, 31-60, 61-90, 90+',
+    },
+    remind: {
+      method: 'POST',
+      path: '/remind',
+      headers: companyHeader,
+      body: receivables.remindRequest,
+      responses: { 200: receivables.remindResponse, ...commonErrorResponses },
+      summary: 'Email payment reminders; skipped within 24h of the last one unless forced',
+    },
+    reminders: {
+      method: 'GET',
+      path: '/documents/:id/reminders',
+      pathParams: idParams,
+      headers: companyHeader,
+      responses: { 200: z.array(receivables.reminderRow), ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/receivables' },
+);
+
+const pricingContract = c.router(
+  {
+    listPriceLists: {
+      method: 'GET',
+      path: '/price-lists',
+      responses: { 200: z.array(pricing.priceList), ...commonErrorResponses },
+    },
+    createPriceList: {
+      method: 'POST',
+      path: '/price-lists',
+      body: pricing.priceListCreate,
+      responses: { 201: pricing.priceListDetail, ...commonErrorResponses },
+    },
+    getPriceList: {
+      method: 'GET',
+      path: '/price-lists/:id',
+      pathParams: idParams,
+      responses: { 200: pricing.priceListDetail, ...commonErrorResponses },
+    },
+    updatePriceList: {
+      method: 'PATCH',
+      path: '/price-lists/:id',
+      pathParams: idParams,
+      body: pricing.priceListUpdate,
+      responses: { 200: pricing.priceListDetail, ...commonErrorResponses },
+    },
+    removePriceList: {
+      method: 'DELETE',
+      path: '/price-lists/:id',
+      pathParams: idParams,
+      responses: { 200: ok, ...commonErrorResponses },
+    },
+    upsertPriceListItem: {
+      method: 'POST',
+      path: '/price-lists/:id/items',
+      pathParams: idParams,
+      body: pricing.priceListItemUpsert,
+      responses: { 201: pricing.priceListItem, ...commonErrorResponses },
+      summary: 'Add an item, or update the tier with the same variant and minQuantity',
+    },
+    updatePriceListItem: {
+      method: 'PATCH',
+      path: '/price-list-items/:id',
+      pathParams: idParams,
+      body: pricing.priceListItemUpdate,
+      responses: { 200: pricing.priceListItem, ...commonErrorResponses },
+    },
+    removePriceListItem: {
+      method: 'DELETE',
+      path: '/price-list-items/:id',
+      pathParams: idParams,
+      responses: { 200: ok, ...commonErrorResponses },
+    },
+    assignContacts: {
+      method: 'PUT',
+      path: '/price-lists/:id/contacts',
+      pathParams: idParams,
+      body: pricing.assignContacts,
+      responses: { 200: pricing.priceListDetail, ...commonErrorResponses },
+    },
+    getDefaultPriceList: {
+      method: 'GET',
+      path: '/default-price-list',
+      responses: { 200: pricing.defaultPriceListResponse, ...commonErrorResponses },
+    },
+    setDefaultPriceList: {
+      method: 'PUT',
+      path: '/default-price-list',
+      body: pricing.defaultPriceListBody,
+      responses: { 200: pricing.defaultPriceListResponse, ...commonErrorResponses },
+    },
+    listExchangeRates: {
+      method: 'GET',
+      path: '/exchange-rates',
+      query: pricing.exchangeRateListQuery,
+      responses: { 200: z.array(pricing.exchangeRate), ...commonErrorResponses },
+    },
+    createExchangeRate: {
+      method: 'POST',
+      path: '/exchange-rates',
+      body: pricing.exchangeRateCreate,
+      responses: { 201: pricing.exchangeRate, ...commonErrorResponses },
+    },
+    lookupExchangeRate: {
+      method: 'GET',
+      path: '/exchange-rates/lookup',
+      query: pricing.exchangeRateLookupQuery,
+      responses: { 200: pricing.exchangeRateLookup, ...commonErrorResponses },
+      summary: 'Rate at a date, falling back to the most recent earlier rate',
+    },
+    updateExchangeRate: {
+      method: 'PATCH',
+      path: '/exchange-rates/:id',
+      pathParams: idParams,
+      body: pricing.exchangeRateUpdate,
+      responses: { 200: pricing.exchangeRate, ...commonErrorResponses },
+    },
+    removeExchangeRate: {
+      method: 'DELETE',
+      path: '/exchange-rates/:id',
+      pathParams: idParams,
+      responses: { 200: ok, ...commonErrorResponses },
+    },
+    resolve: {
+      method: 'GET',
+      path: '/resolve',
+      query: pricing.resolveQuery,
+      responses: { 200: pricing.resolvedPrice, ...commonErrorResponses },
+      summary: 'Unit price: contact list > company default list > base price',
+    },
+  },
+  { pathPrefix: '/pricing' },
+);
+
+const recurringContract = c.router(
+  {
+    list: {
+      method: 'GET',
+      path: '',
+      headers: companyHeader,
+      responses: { 200: z.array(recurring.recurringInvoice), ...commonErrorResponses },
+    },
+    create: {
+      method: 'POST',
+      path: '',
+      headers: companyHeader,
+      body: recurring.recurringCreate,
+      responses: { 201: recurring.recurringInvoice, ...commonErrorResponses },
+    },
+    fromDocument: {
+      method: 'POST',
+      path: '/from-document/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: recurring.recurringFromDocument,
+      responses: { 201: recurring.recurringInvoice, ...commonErrorResponses },
+      summary: 'Create a schedule from an existing invoice (its lines become the template)',
+    },
+    get: {
+      method: 'GET',
+      path: '/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      responses: { 200: recurring.recurringInvoice, ...commonErrorResponses },
+    },
+    update: {
+      method: 'PATCH',
+      path: '/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: recurring.recurringUpdate,
+      responses: { 200: recurring.recurringInvoice, ...commonErrorResponses },
+    },
+    remove: {
+      method: 'DELETE',
+      path: '/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      responses: { 200: ok, ...commonErrorResponses },
+    },
+    pause: {
+      method: 'POST',
+      path: '/:id/pause',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: z.object({}).optional(),
+      responses: { 200: recurring.recurringInvoice, ...commonErrorResponses },
+    },
+    resume: {
+      method: 'POST',
+      path: '/:id/resume',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: z.object({}).optional(),
+      responses: { 200: recurring.recurringInvoice, ...commonErrorResponses },
+    },
+    runNow: {
+      method: 'POST',
+      path: '/:id/run-now',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: z.object({}).optional(),
+      responses: { 200: recurring.recurringRun, ...commonErrorResponses },
+      summary: 'Generate the next occurrence immediately, dated today',
+    },
+    runs: {
+      method: 'GET',
+      path: '/:id/runs',
+      pathParams: idParams,
+      headers: companyHeader,
+      responses: { 200: z.array(recurring.recurringRun), ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/recurring-invoices' },
+);
+
 const healthContract = c.router({
   health: {
     method: 'GET',
@@ -610,6 +880,35 @@ const healthContract = c.router({
   },
 });
 
+const importsContract = c.router(
+  {
+    preview: {
+      method: 'POST',
+      path: '/:kind/preview',
+      pathParams: z.object({ kind: imports.importKind }),
+      body: imports.importPreviewRequest,
+      responses: { 200: imports.importPreviewResponse, ...commonErrorResponses },
+      summary: 'Parse and validate a CSV without writing anything',
+    },
+    commit: {
+      method: 'POST',
+      path: '/:kind/commit',
+      pathParams: z.object({ kind: imports.importKind }),
+      body: imports.importCommitRequest,
+      responses: { 200: imports.importCommitResponse, ...commonErrorResponses },
+      summary: 'Apply the valid rows of a CSV; honours the Idempotency-Key header',
+    },
+    template: {
+      method: 'GET',
+      path: '/:kind/template',
+      pathParams: z.object({ kind: imports.importKind }),
+      query: imports.importTemplateQuery,
+      responses: { 200: imports.importTemplateResponse, ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/imports' },
+);
+
 export const apiContract = c.router(
   {
     health: healthContract,
@@ -623,6 +922,11 @@ export const apiContract = c.router(
     documents: documentsContract,
     payments: paymentsContract,
     dashboard: dashboardContract,
+    audit: auditContract,
+    imports: importsContract,
+    receivables: receivablesContract,
+    pricing: pricingContract,
+    recurring: recurringContract,
   },
   {
     pathPrefix: '/api/v1',

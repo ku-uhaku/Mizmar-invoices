@@ -10,16 +10,23 @@ import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/auth.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
+import { AuditModule } from './audit/audit.module';
+import { AuditInterceptor } from './audit/audit.interceptor';
 import { HealthModule } from './health/health.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { DocumentsModule } from './documents/documents.module';
+import { ImportsModule } from './imports/imports.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { MailModule } from './mail/mail.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PdfModule } from './pdf/pdf.module';
+import { PricingModule } from './pricing/pricing.module';
 import { SettingsModule } from './settings/settings.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { ReceivablesModule } from './receivables/receivables.module';
+import { ReportsModule } from './reports/reports.module';
+import { RecurringModule } from './recurring/recurring.module';
 
 @Module({
   imports: [
@@ -57,6 +64,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     PrismaModule,
     StorageModule,
     AuthModule,
+    AuditModule,
     HealthModule,
     ContactsModule,
     CatalogModule,
@@ -67,12 +75,19 @@ import { DashboardModule } from './dashboard/dashboard.module';
     PaymentsModule,
     SettingsModule,
     DashboardModule,
+    ImportsModule,
+    ReceivablesModule,
+    ReportsModule,
+    PricingModule,
+    RecurringModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     // Runs after the guard, so the request context is available to scope the
     // stored key to its organization.
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
+    // Declared after idempotency so replayed requests are never logged twice.
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

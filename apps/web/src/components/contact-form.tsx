@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Contact, ContactCreate } from '@mizmar/contracts';
 import { useEffect, useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
@@ -40,6 +40,7 @@ interface FormState {
   defaultCurrency: string;
   defaultLocale: '' | 'EN' | 'FR' | 'AR';
   vatExempt: boolean;
+  priceListId: string;
   notes: string;
   addressLine1: string;
   addressLine2: string;
@@ -68,6 +69,7 @@ function initialState(contact: Contact | undefined, kind: Kind, name: string): F
     defaultCurrency: contact?.defaultCurrency ?? 'MAD',
     defaultLocale: contact?.defaultLocale ?? '',
     vatExempt: contact?.vatExempt ?? false,
+    priceListId: contact?.priceListId ?? '',
     notes: contact?.notes ?? '',
     addressLine1: address?.addressLine1 ?? '',
     addressLine2: address?.addressLine2 ?? '',
@@ -101,6 +103,10 @@ export function ContactForm({
 }) {
   const t = useT();
   const queryClient = useQueryClient();
+  const priceLists = useQuery({
+    queryKey: ['price-lists'],
+    queryFn: async () => unwrap(await api.pricing.listPriceLists()),
+  });
   const [form, setForm] = useState<FormState>(() => initialState(contact, defaultKind, initialName));
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +175,7 @@ export function ContactForm({
         defaultCurrency: form.defaultCurrency.trim().toUpperCase() || 'MAD',
         defaultLocale: form.defaultLocale || undefined,
         vatExempt: form.vatExempt,
+        priceListId: form.priceListId || null,
         notes: blank(form.notes),
         addresses: [address, ...others],
       };
@@ -332,6 +339,16 @@ export function ContactForm({
               value={form.defaultCurrency}
               onChange={(event) => set('defaultCurrency', event.target.value.toUpperCase())}
             />
+          </Field>
+          <Field label={t('Liste de prix')}>
+            <Select value={form.priceListId} onChange={(event) => set('priceListId', event.target.value)}>
+              <option value="">{t('Aucune (prix par défaut)')}</option>
+              {(priceLists.data ?? []).map((list) => (
+                <option key={list.id} value={list.id}>
+                  {list.name} ({list.currency})
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field label={t('Langue des documents')}>
             <Select

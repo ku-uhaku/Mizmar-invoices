@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { username as usernameSchema } from './auth';
 import {
   currencyCode,
   decimalInput,
@@ -109,6 +110,7 @@ export const membership = z.object({
   id: uuid,
   userId: uuid,
   email: z.string(),
+  username: z.string().nullable(),
   fullName: z.string(),
   role: roleEnum,
   companyIds: z.array(uuid),
@@ -118,6 +120,7 @@ export const membership = z.object({
 
 export const membershipInvite = z.object({
   email: z.string().email(),
+  username: usernameSchema.optional(),
   fullName: z.string().min(1).max(200),
   role: roleEnum,
   companyIds: z.array(uuid).min(1),
@@ -126,6 +129,8 @@ export const membershipInvite = z.object({
 });
 
 export const membershipUpdate = z.object({
+  /** Empty string or null clears the username. */
+  username: usernameSchema.or(z.literal('')).nullable().optional(),
   role: roleEnum.optional(),
   companyIds: z.array(uuid).optional(),
   isActive: z.boolean().optional(),

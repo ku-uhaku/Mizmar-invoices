@@ -149,6 +149,10 @@ export const documentDetail = z.object({
   shippingVatRate: decimalString.nullable(),
 
   totals: totalsSchema,
+  /** Totals converted to the company currency with the snapshotted exchangeRate, for reporting. */
+  baseTotals: z
+    .object({ totalExclVat: decimalString, totalVat: decimalString, totalInclVat: decimalString })
+    .optional(),
   vatBreakdown: z.array(vatBucketSchema),
   paidAmount: decimalString,
   outstandingAmount: decimalString,

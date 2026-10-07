@@ -6,6 +6,7 @@ import type { DocumentDetail } from '@mizmar/contracts';
 import { api, unwrap } from '@/lib/api';
 import { useT } from '@/lib/i18n/provider';
 import { Card, CardHeader, Table, Td, Th } from './ui';
+import { ReminderHistory } from './reminder-history';
 import { DocBadges } from './doc-badges';
 import { Icon } from './icons';
 import { amount, date, documentTypeLabel, money, paymentMethodLabel, percent } from '@/lib/format';
@@ -218,6 +219,8 @@ export function DocumentView({ document }: { document: DocumentDetail }) {
             )}
           </div>
         </Card>
+
+        {document.type === 'SALES_INVOICE' && settles && <ReminderHistory documentId={document.id} />}
 
         {documentPayments.length > 0 && (
           <Card>

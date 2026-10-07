@@ -1,0 +1,25 @@
+export const AR_AUTH: Record<string, string> = {
+  'E-mail ou nom d’utilisateur': 'البريد الإلكتروني أو اسم المستخدم',
+  'Identifiant ou mot de passe incorrect.': 'المعرّف أو كلمة المرور غير صحيحة.',
+  'Mot de passe oublié ?': 'نسيت كلمة المرور؟',
+  'Mot de passe oublié': 'نسيت كلمة المرور',
+  'Saisissez votre e-mail ou nom d’utilisateur ; nous vous enverrons un lien de réinitialisation.':
+    'أدخل بريدك الإلكتروني أو اسم المستخدم وسنرسل إليك رابط إعادة التعيين.',
+  'Envoyer le lien': 'إرسال الرابط',
+  'Retour à la connexion': 'العودة إلى تسجيل الدخول',
+  'Une erreur est survenue, réessayez.': 'حدث خطأ، حاول مرة أخرى.',
+  'Si un compte correspond, un e-mail contenant un lien de réinitialisation vient d’être envoyé. Le lien est valable 1 heure.':
+    'إذا كان هناك حساب مطابق، فقد أُرسل بريد يحتوي على رابط إعادة التعيين. الرابط صالح لمدة ساعة.',
+  'Nouveau mot de passe': 'كلمة مرور جديدة',
+  'Choisissez un nouveau mot de passe pour votre compte.': 'اختر كلمة مرور جديدة لحسابك.',
+  '8 caractères minimum': '8 أحرف على الأقل',
+  'Confirmer le mot de passe': 'تأكيد كلمة المرور',
+  'Réinitialiser le mot de passe': 'إعادة تعيين كلمة المرور',
+  'Les mots de passe ne correspondent pas.': 'كلمتا المرور غير متطابقتين.',
+  'Ce lien est invalide ou a expiré. Demandez-en un nouveau.': 'هذا الرابط غير صالح أو منتهي الصلاحية. اطلب رابطًا جديدًا.',
+  'Mot de passe mis à jour. Vous pouvez maintenant vous connecter.': 'تم تحديث كلمة المرور. يمكنك الآن تسجيل الدخول.',
+  'Nom d’utilisateur': 'اسم المستخدم',
+  'Facultatif ; 3 à 32 caractères : a-z, 0-9, point, tiret, souligné': 'اختياري؛ من 3 إلى 32 حرفًا: a-z، 0-9، نقطة، شرطة، شرطة سفلية',
+  'Modifier l’identifiant': 'تعديل اسم المستخدم',
+  'Nom d’utilisateur (vide pour le retirer)': 'اسم المستخدم (اتركه فارغًا لإزالته)',
+};

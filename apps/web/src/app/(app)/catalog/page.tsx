@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
+import { ImportDialog } from '@/components/import-dialog';
 import {
   Badge,
   Button,
@@ -49,6 +50,7 @@ function CatalogScreen() {
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [attributeOpen, setAttributeOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<ProductRow | null>(null);
   const [deleting, setDeleting] = useState<ProductRow | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -94,6 +96,9 @@ function CatalogScreen() {
         }
         actions={
           <>
+            <Button onClick={() => setImportOpen(true)}>
+              <Icon name="download" className="rotate-180" /> {t('Importer')}
+            </Button>
             <Button onClick={() => setAttributeOpen(true)}>
               <Icon name="plus" /> {t('Nouvel attribut')}
             </Button>
@@ -294,6 +299,7 @@ function CatalogScreen() {
         )}
       </Card>
 
+      <ImportDialog kind="products" open={importOpen} onClose={() => setImportOpen(false)} />
       <NewProductDialog open={newOpen} onClose={() => setNewOpen(false)} />
       {attributeOpen && <AttributeTypeDialog onClose={() => setAttributeOpen(false)} />}
       {editing && (

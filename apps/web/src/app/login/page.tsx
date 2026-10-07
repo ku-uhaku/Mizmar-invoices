@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { Icon } from '@/components/icons';
@@ -26,12 +27,12 @@ function LoginForm() {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ identifier: email, password }),
     });
 
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { message?: string };
-      setError(body.message ?? t('E-mail ou mot de passe incorrect.'));
+      setError(body.message ?? t('Identifiant ou mot de passe incorrect.'));
       setPending(false);
       return;
     }
@@ -49,9 +50,9 @@ function LoginForm() {
 
   return (
     <form onSubmit={submit} className="space-y-5">
-      <Field label={t('Adresse e-mail')}>
+      <Field label={t('E-mail ou nom d’utilisateur')}>
         <Input
-          type="email"
+          type="text"
           autoComplete="username"
           autoFocus
           required
@@ -83,6 +84,12 @@ function LoginForm() {
           </button>
         </div>
       </Field>
+
+      <div className="-mt-2 text-end">
+        <Link href="/forgot-password" className="text-xs font-medium text-brand hover:underline">
+          {t('Mot de passe oublié ?')}
+        </Link>
+      </div>
 
       <ErrorNote>{error}</ErrorNote>
 

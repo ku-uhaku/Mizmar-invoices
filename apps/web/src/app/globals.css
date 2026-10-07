@@ -124,6 +124,18 @@
   --color-side-border: #1b2c27;
 }
 
+:root {
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
 html,
 body {
   background: var(--color-canvas);

@@ -158,18 +158,19 @@ async function main(): Promise<void> {
   // ---- Users, one per role ----------------------------------------------
   const password = await hashPassword('Mizmar2026!');
   const people = [
-    { email: 'owner@mizmar.ma', fullName: 'Amina Benali', role: 'OWNER' as const },
-    { email: 'accountant@mizmar.ma', fullName: 'Youssef Idrissi', role: 'ACCOUNTANT' as const },
-    { email: 'sales@mizmar.ma', fullName: 'Salma Tazi', role: 'SALES' as const },
-    { email: 'warehouse@mizmar.ma', fullName: 'Karim Ouazzani', role: 'WAREHOUSE' as const },
+    { email: 'owner@mizmar.ma', username: 'owner', fullName: 'Amina Benali', role: 'OWNER' as const },
+    { email: 'accountant@mizmar.ma', username: 'accountant', fullName: 'Youssef Idrissi', role: 'ACCOUNTANT' as const },
+    { email: 'sales@mizmar.ma', username: 'sales', fullName: 'Salma Tazi', role: 'SALES' as const },
+    { email: 'warehouse@mizmar.ma', username: 'warehouse', fullName: 'Karim Ouazzani', role: 'WAREHOUSE' as const },
   ];
 
   for (const person of people) {
     const user = await prisma.user.upsert({
       where: { email: person.email },
-      update: {},
+      update: { username: person.username },
       create: {
         email: person.email,
+        username: person.username,
         fullName: person.fullName,
         passwordHash: password,
         locale: 'FR',
@@ -407,7 +408,7 @@ async function main(): Promise<void> {
   console.log('  Organization : Mizmar Group');
   console.log('  Companies    : MZT (Mizmar Trading), MZR (Mizmar Retail)');
   console.log('  Warehouses   : WH-CASA, WH-RABAT');
-  console.log('  Sign in      : owner@mizmar.ma / Mizmar2026!');
+  console.log('  Sign in      : owner@mizmar.ma (or username "owner") / Mizmar2026!');
   console.log('                 accountant@mizmar.ma, sales@mizmar.ma, warehouse@mizmar.ma');
 }
 

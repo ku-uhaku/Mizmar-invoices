@@ -7,7 +7,9 @@ import {
   isEditable,
   isOverdue,
   outstandingAmount,
+  toBaseAmount,
 } from '@mizmar/core';
+import type { Prisma } from '@prisma/client';
 import type { documentSchemas } from '@mizmar/contracts';
 import type { z } from 'zod';
 import { moneyOut, nullableMoneyOut, nullableQtyOut, qtyOut, rateOut } from '../common/util/decimal';
@@ -152,6 +154,7 @@ export function mapDocument(
       totalVat: moneyOut(document.totalVat),
       totalInclVat: moneyOut(document.totalInclVat),
     },
+    baseTotals: baseTotalsOf(document),
     vatBreakdown,
     paidAmount: moneyOut(document.paidAmount),
     outstandingAmount:
@@ -192,5 +195,23 @@ export function mapDocument(
     cancelReason: document.cancelReason,
     createdAt: document.createdAt.toISOString(),
     updatedAt: document.updatedAt.toISOString(),
+  };
+}
+
+/** Totals in the company currency: stored totals x the document's snapshotted rate. */
+function baseTotalsOf(document: DocumentWithRelations) {
+  const rounding = {
+    mode: document.roundingMode,
+    scale: document.roundingScale,
+    granularity: document.roundingGranularity,
+  };
+  const base = (value: Prisma.Decimal) =>
+    toBaseAmount(value.toString(), document.exchangeRate.toString(), rounding).toFixed(
+      rounding.scale,
+    );
+  return {
+    totalExclVat: base(document.totalExclVat),
+    totalVat: base(document.totalVat),
+    totalInclVat: base(document.totalInclVat),
   };
 }

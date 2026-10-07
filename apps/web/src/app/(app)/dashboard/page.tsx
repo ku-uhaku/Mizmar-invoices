@@ -181,7 +181,7 @@ export default function DashboardPage() {
               : t('Aucun retard de paiement')
           }
           tone={overdue ? 'danger' : 'success'}
-          href={overdue ? '/documents?overdueOnly=true' : '/documents?settlement=UNPAID'}
+          href={overdue ? '/receivables' : '/documents?settlement=UNPAID'}
         />
         <StatCard
           icon="box"
@@ -272,7 +272,7 @@ export default function DashboardPage() {
               <Pending
                 label={t('Factures en retard')}
                 count={data.receivables.overdueDocumentCount}
-                href="/documents?overdueOnly=true"
+                href="/receivables"
                 tone="danger"
               />
             </ul>

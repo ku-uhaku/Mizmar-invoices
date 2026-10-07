@@ -62,7 +62,7 @@ export default function MembersPage() {
   });
 
   const update = useMutation({
-    mutationFn: async (input: { id: string; body: { role?: Role; isActive?: boolean } }) =>
+    mutationFn: async (input: { id: string; body: { role?: Role; isActive?: boolean; username?: string | null } }) =>
       unwrap(await api.members.update({ params: { id: input.id }, body: input.body })),
     onSuccess: () => {
       toast.success(t('Membre mis à jour'));
@@ -114,7 +114,10 @@ export default function MembersPage() {
                   <tr key={member.id}>
                     <Td>
                       <p className="font-medium">{member.fullName}</p>
-                      <p className="text-xs text-ink-muted">{member.email}</p>
+                      <p className="text-xs text-ink-muted">
+                        {member.email}
+                        {member.username ? ` · @${member.username}` : ''}
+                      </p>
                     </Td>
                     <Td>
                       <Select
@@ -141,6 +144,20 @@ export default function MembersPage() {
                     <Td className="text-end">
                       {!isSelf && (
                         <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const next = window.prompt(
+                                t('Nom d’utilisateur (vide pour le retirer)'),
+                                member.username ?? '',
+                              );
+                              if (next === null) return;
+                              update.mutate({ id: member.id, body: { username: next.trim().toLowerCase() || null } });
+                            }}
+                          >
+                            {t('Modifier l’identifiant')}
+                          </Button>
                           <Button
                             size="sm"
                             variant="ghost"
@@ -190,6 +207,7 @@ function InviteDialog({
   const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [role, setRole] = useState<Role>('SALES');
   const [password, setPassword] = useState('');
   const [companyIds, setCompanyIds] = useState<string[]>(companies.map((c) => c.id));
@@ -198,7 +216,7 @@ function InviteDialog({
   const invite = useMutation({
     mutationFn: async () => {
       setError(null);
-      return unwrap(await api.members.invite({ body: { email, fullName, role, password, companyIds } }));
+      return unwrap(await api.members.invite({ body: { email, username: username.trim() || undefined, fullName, role, password, companyIds } }));
     },
     onSuccess: () => {
       toast.success(t('Invitation créée'));
@@ -247,6 +265,13 @@ function InviteDialog({
         </Field>
         <Field label={t('E-mail')} required>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label={t('Nom d’utilisateur')} hint={t('Facultatif ; 3 à 32 caractères : a-z, 0-9, point, tiret, souligné')}>
+          <Input
+            value={username}
+            autoCapitalize="none"
+            onChange={(e) => setUsername(e.target.value.toLowerCase())}
+          />
         </Field>
         <Field label={t('Rôle')}>
           <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>

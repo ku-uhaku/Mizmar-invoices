@@ -19,6 +19,7 @@ import {
   Th,
 } from '@/components/ui';
 import { ContactForm } from '@/components/contact-form';
+import { ImportDialog } from '@/components/import-dialog';
 import { Button } from '@/components/ui';
 import { Icon } from '@/components/icons';
 import { money } from '@/lib/format';
@@ -35,6 +36,7 @@ type KindFilter = 'ALL' | 'CLIENT' | 'SUPPLIER';
 export default function ContactsPage() {
   const t = useT();
   const router = useRouter();
+  const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState<'CLIENT' | 'SUPPLIER' | null>(null);
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<KindFilter>('ALL');
@@ -63,6 +65,9 @@ export default function ContactsPage() {
         subtitle={t('Annuaire et encours')}
         actions={
           <>
+            <Button variant="secondary" onClick={() => setImporting(true)}>
+              <Icon name="download" className="rotate-180" /> {t('Importer')}
+            </Button>
             <Button variant="secondary" onClick={() => setCreating('SUPPLIER')}>
               <Icon name="plus" /> {t('Nouveau fournisseur')}
             </Button>
@@ -71,6 +76,12 @@ export default function ContactsPage() {
             </Button>
           </>
         }
+      />
+      <ImportDialog
+        kind="contacts"
+        open={importing}
+        onClose={() => setImporting(false)}
+        defaultContactKind={kind === 'SUPPLIER' ? 'SUPPLIER' : 'CLIENT'}
       />
       <ContactForm
         open={creating !== null}

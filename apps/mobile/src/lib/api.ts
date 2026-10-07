@@ -129,11 +129,11 @@ export function unwrap<T extends { status: number; body: unknown }>(
 }
 
 /** Sign in. Returns the session user so the caller can pick a company. */
-export async function login(email: string, password: string) {
+export async function login(identifier: string, password: string) {
   const response = await fetch(`${API_URL}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ identifier, password }),
   });
 
   const body = (await response.json()) as Record<string, unknown>;

@@ -8,9 +8,12 @@ import { useT } from '@/lib/i18n/provider';
 const LINKS = [
   { href: '/settings/company', label: 'Société' },
   { href: '/settings/vat-rates', label: 'TVA' },
+  { href: '/settings/price-lists', label: 'Listes de prix' },
+  { href: '/settings/exchange-rates', label: 'Taux de change' },
   { href: '/settings/numbering', label: 'Numérotation' },
   { href: '/settings/members', label: 'Membres' },
   { href: '/settings/templates', label: 'Modèles de document' },
+  { href: '/settings/audit-log', label: 'Journal d’activité' },
   { href: '/settings/language', label: 'Langue & apparence' },
 ];
 

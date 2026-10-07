@@ -21,7 +21,7 @@ pnpm --filter @mizmar/web dev
 pnpm --filter @mizmar/mobile dev
 ```
 
-Sign in with `owner@mizmar.ma` / `Mizmar2026!` (also `accountant@`, `sales@`, `warehouse@`). Mail lands in Mailpit at :8025.
+Sign in with `owner@mizmar.ma` or the username `owner`, password `Mizmar2026!` (also `accountant`, `sales`, `warehouse`). Login accepts an email or a username; "Mot de passe oublié ?" emails a reset link (Mailpit in dev). Mail lands in Mailpit at :8025.
 
 PDF rendering needs Chrome/Chromium; set `CHROMIUM_PATH` if it is not in a standard location.
 

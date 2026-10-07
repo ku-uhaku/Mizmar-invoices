@@ -276,6 +276,10 @@ model Company {
   defaultWarehouseId String?    @db.Uuid
   defaultWarehouse   Warehouse? @relation("CompanyDefaultWarehouse", fields: [defaultWarehouseId], references: [id], onDelete: SetNull)
 
+  /// Fallback list when the contact has none; see PricingService precedence.
+  defaultPriceListId String?    @db.Uuid
+  defaultPriceList   PriceList? @relation("CompanyDefaultPriceList", fields: [defaultPriceListId], references: [id], onDelete: SetNull)
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -287,6 +291,7 @@ model Company {
   templateConfigs TemplateConfig[]
   vatRates        VatRate[]
   exchangeRates   ExchangeRate[]
+  recurringInvoices RecurringInvoice[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -296,6 +301,8 @@ model Company {
 model User {
   id           String  @id @default(uuid(7)) @db.Uuid
   email        String  @unique
+  /// Optional lowercase handle usable at login instead of the email.
+  username     String? @unique
   passwordHash String
   fullName     String
   phone        String?
@@ -308,15 +315,32 @@ model User {
 
   memberships   Membership[]
   refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   auditLogs     AuditLog[]
 
   createdContacts  Contact[]           @relation("ContactCreatedBy")
   createdDocuments Document[]          @relation("DocumentCreatedBy")
+  recurringInvoices RecurringInvoice[]
   movements        StockMovement[]
   countSessions    StockCountSession[]
   payments         Payment[]
 
   @@map("users")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @db.Uuid
+  /// SHA-256 of the emailed token; the raw token is never stored.
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("password_reset_tokens")
 }
 
 model Membership {
@@ -385,6 +409,8 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([organizationId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([userId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
 }
@@ -451,6 +477,7 @@ model Contact {
   people    ContactPerson[]
   documents Document[]
   payments  Payment[]
+  recurringInvoices RecurringInvoice[]
 
   @@unique([organizationId, code])
   @@index([organizationId, kind])
@@ -662,9 +689,13 @@ model PriceList {
   name     String
   currency String  @default("MAD")
   isActive Boolean @default(true)
+  /// Inclusive validity window; null means open-ended on that side.
+  validFrom DateTime? @db.Date
+  validTo   DateTime? @db.Date
 
-  items    PriceListItem[]
-  contacts Contact[]
+  items               PriceListItem[]
+  contacts            Contact[]
+  defaultForCompanies Company[]       @relation("CompanyDefaultPriceList")
 
   @@unique([organizationId, name])
   @@map("price_lists")
@@ -989,6 +1020,8 @@ model Document {
   movements     StockMovement[]
   reservations  StockReservation[]
   allocations   PaymentAllocation[]
+  reminders     PaymentReminder[]
+  recurringRuns RecurringInvoiceRun[]
 
   @@unique([companyId, type, number])
   @@index([companyId, type, lifecycle])
@@ -1260,4 +1293,117 @@ model Asset {
 
   @@index([organizationId, kind])
   @@map("assets")
+}
+
+// ---------------------------------------------------------------------------
+// Receivables
+// ---------------------------------------------------------------------------
+
+enum ReminderChannel {
+  EMAIL
+}
+
+/// One dunning message sent about an overdue sales invoice.
+model PaymentReminder {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  companyId  String   @db.Uuid
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  sentAt    DateTime        @default(now())
+  sentById  String?         @db.Uuid
+  channel   ReminderChannel @default(EMAIL)
+  /// 1 = friendly, 2 = firm, 3 = final notice.
+  level     Int             @default(1)
+  recipient String?
+
+  @@index([documentId, sentAt])
+  @@index([companyId, sentAt])
+  @@map("payment_reminders")
+}
+
+// ---------------------------------------------------------------------------
+// Recurring invoices
+// ---------------------------------------------------------------------------
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum RecurringMode {
+  DRAFT
+  VALIDATE
+  VALIDATE_AND_EMAIL
+}
+
+enum RecurringRunStatus {
+  OK
+  FAILED
+}
+
+/// A schedule that generates a sales invoice from a stored template. Dates are
+/// company-local calendar dates (see `timezone`), not instants.
+model RecurringInvoice {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId String  @db.Uuid
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  name String
+
+  /// documentCreate body minus type/contact/dates: lines, notes, terms,
+  /// currency, warehouse, discounts...
+  template Json
+
+  frequency      RecurringFrequency
+  interval       Int                @default(1)
+  startDate      DateTime           @db.Date
+  endDate        DateTime?          @db.Date
+  maxOccurrences Int?
+  timezone       String             @default("Africa/Casablanca")
+
+  /// Local date of the next occurrence to generate; null once the series is over.
+  nextRunAt           DateTime? @db.Date
+  lastRunAt           DateTime?
+  /// Occurrences generated so far == index of the next occurrence.
+  occurrencesCount    Int       @default(0)
+  consecutiveFailures Int       @default(0)
+
+  mode     RecurringMode @default(DRAFT)
+  isActive Boolean       @default(true)
+
+  /// The scheduler acts as this user (their role and company access apply).
+  createdById String   @db.Uuid
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  runs RecurringInvoiceRun[]
+
+  @@index([isActive, nextRunAt])
+  @@index([companyId])
+  @@map("recurring_invoices")
+}
+
+model RecurringInvoiceRun {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  recurringId String           @db.Uuid
+  recurring   RecurringInvoice @relation(fields: [recurringId], references: [id], onDelete: Cascade)
+  documentId  String?          @db.Uuid
+  document    Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  /// The occurrence this run is for. Unique per schedule: the idempotency key.
+  scheduledFor DateTime           @db.Date
+  runAt        DateTime           @default(now())
+  status       RecurringRunStatus
+  /// Failure reason, or a warning when the draft exists but validation/email failed.
+  error        String?
+
+  @@unique([recurringId, scheduledFor])
+  @@index([documentId])
+  @@map("recurring_invoice_runs")
 }

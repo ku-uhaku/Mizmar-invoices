@@ -341,6 +341,7 @@ export class SettingsService {
       id: row.id,
       userId: row.userId,
       email: row.user.email,
+      username: row.user.username,
       fullName: row.user.fullName,
       role: row.role,
       companyIds: row.companyAccess.map((access) => access.companyId),
@@ -363,6 +364,7 @@ export class SettingsService {
     }
 
     const email = body.email.toLowerCase().trim();
+    const username = body.username ? body.username.toLowerCase().trim() : null;
 
     const membership = await this.prisma.$transaction(async (tx) => {
       const existingUser = await tx.user.findUnique({ where: { email } });
@@ -375,11 +377,14 @@ export class SettingsService {
         }
       }
 
+      if (username && !existingUser) await assertUsernameFree(tx, username);
+
       const user =
         existingUser ??
         (await tx.user.create({
           data: {
             email,
+            username,
             fullName: body.fullName,
             passwordHash: await hashPassword(body.password),
           },
@@ -400,6 +405,7 @@ export class SettingsService {
       id: membership.id,
       userId: membership.userId,
       email: membership.user.email,
+      username: membership.user.username,
       fullName: membership.user.fullName,
       role: membership.role,
       companyIds: membership.companyAccess.map((access) => access.companyId),
@@ -447,6 +453,11 @@ export class SettingsService {
           skipDuplicates: true,
         });
       }
+      if (body.username !== undefined) {
+        const next = body.username ? body.username.toLowerCase().trim() : null;
+        if (next) await assertUsernameFree(tx, next, existing.userId);
+        await tx.user.update({ where: { id: existing.userId }, data: { username: next } });
+      }
       if (body.isActive !== undefined) {
         await tx.user.update({ where: { id: existing.userId }, data: { isActive: body.isActive } });
         if (!body.isActive) {
@@ -468,6 +479,7 @@ export class SettingsService {
       id: membership.id,
       userId: membership.userId,
       email: membership.user.email,
+      username: membership.user.username,
       fullName: membership.user.fullName,
       role: membership.role,
       companyIds: membership.companyAccess.map((access) => access.companyId),
@@ -813,4 +825,15 @@ function mapTemplate(row: Prisma.TemplateConfigGetPayload<object>): TemplateConf
     version: row.version,
     config: withDefaults(row.config),
   };
+}
+
+async function assertUsernameFree(
+  tx: { user: { findUnique: (args: { where: { username: string } }) => Promise<{ id: string } | null> } },
+  username: string,
+  exceptUserId?: string,
+): Promise<void> {
+  const taken = await tx.user.findUnique({ where: { username } });
+  if (taken && taken.id !== exceptUserId) {
+    throw AppError.conflict('USERNAME_TAKEN', `The username "${username}" is already taken`);
+  }
 }

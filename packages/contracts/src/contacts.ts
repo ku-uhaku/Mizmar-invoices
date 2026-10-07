@@ -91,7 +91,7 @@ export const contactCreate = z.object({
   defaultCurrency: currencyCode.default('MAD'),
   defaultLocale: localeEnum.optional(),
   vatExempt: z.boolean().default(false),
-  priceListId: uuid.optional(),
+  priceListId: uuid.nullish(),
   notes: z.string().max(5000).optional(),
   addresses: z.array(contactAddressInput).optional(),
   people: z.array(contactPerson.omit({ id: true })).optional(),

@@ -6,6 +6,7 @@ interface SessionUser {
   id: string;
   fullName: string;
   email: string;
+  username?: string | null;
   role: string;
   organizationName: string;
   companies: Array<{ id: string; code: string; name: string }>;
@@ -15,7 +16,7 @@ interface AuthState {
   status: 'loading' | 'signedOut' | 'signedIn';
   user: SessionUser | null;
   companyId: string | null;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   selectCompany: (id: string) => Promise<void>;
 }
@@ -58,8 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [signOut]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const profile = await apiLogin(email, password);
+  const signIn = useCallback(async (identifier: string, password: string) => {
+    const profile = await apiLogin(identifier, password);
     const first = profile.companies[0]?.id ?? null;
     if (first) await writeCompany(first);
     const me = unwrap(await api.auth.me());
