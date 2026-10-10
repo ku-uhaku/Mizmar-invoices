@@ -8,6 +8,10 @@ import { useT } from '@/lib/i18n/provider';
 const LINKS = [
   { href: '/settings/company', label: 'Société' },
   { href: '/settings/vat-rates', label: 'TVA' },
+  { href: '/settings/expense-categories', label: 'Catégories de dépenses' },
+  { href: '/settings/pos', label: 'Caisse' },
+  { href: '/settings/hr', label: 'Paramètres RH' },
+  { href: '/settings/payroll', label: 'Taux de paie' },
   { href: '/settings/price-lists', label: 'Listes de prix' },
   { href: '/settings/exchange-rates', label: 'Taux de change' },
   { href: '/settings/numbering', label: 'Numérotation' },

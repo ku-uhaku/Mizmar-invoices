@@ -33,6 +33,30 @@ export class CatalogController {
     }));
   }
 
+  @TsRestHandler(apiContract.catalog.listUnits)
+  listUnits(@Ctx() ctx: RequestContext) {
+    return tsRestHandler(apiContract.catalog.listUnits, async () => ({
+      status: 200 as const,
+      body: await this.catalog.listUnits(ctx),
+    }));
+  }
+
+  @TsRestHandler(apiContract.catalog.createUnit)
+  createUnit(@Ctx() ctx: RequestContext) {
+    return tsRestHandler(apiContract.catalog.createUnit, async ({ body }) => ({
+      status: 201 as const,
+      body: await this.catalog.createUnit(ctx, body),
+    }));
+  }
+
+  @TsRestHandler(apiContract.catalog.productFacets)
+  productFacets(@Ctx() ctx: RequestContext) {
+    return tsRestHandler(apiContract.catalog.productFacets, async () => ({
+      status: 200 as const,
+      body: await this.catalog.productFacets(ctx),
+    }));
+  }
+
   @TsRestHandler(apiContract.catalog.listProducts)
   listProducts(@Ctx() ctx: RequestContext) {
     return tsRestHandler(apiContract.catalog.listProducts, async ({ query }) => ({

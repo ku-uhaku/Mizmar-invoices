@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { reportSchemas } from '@mizmar/contracts';
 import type { FastifyReply } from 'fastify';
 import type { z } from 'zod';
@@ -6,6 +6,7 @@ import { AppError } from '../common/app-error';
 import { Ctx } from '../common/decorators/ctx.decorator';
 import type { RequestContext } from '../tenancy/request-context';
 import { toCsv, type CsvCell } from './csv';
+import { AnalyticsService } from './analytics.service';
 import { ReportsService } from './reports.service';
 
 function parse<T extends z.ZodTypeAny>(schema: T, raw: unknown): z.infer<T> {
@@ -28,7 +29,10 @@ function parse<T extends z.ZodTypeAny>(schema: T, raw: unknown): z.infer<T> {
  */
 @Controller('api/v1/reports')
 export class ReportsController {
-  constructor(private readonly reports: ReportsService) {}
+  constructor(
+    private readonly reports: ReportsService,
+    private readonly analytics: AnalyticsService,
+  ) {}
 
   @Get('sales')
   async sales(
@@ -154,6 +158,33 @@ export class ReportsController {
           row.value,
         ]),
         ['Total', null, null, null, null, null, report.totalValue],
+      ],
+      query.decimal,
+    );
+  }
+
+  /** Every analytic report that shares the generic table shape (see `tableReportName`). */
+  @Get(':name')
+  async table(
+    @Ctx() ctx: RequestContext,
+    @Param('name') rawName: string,
+    @Query() raw: unknown,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const name = parse(reportSchemas.tableReportName, rawName);
+    const query = parse(reportSchemas.tableReportQuery, raw);
+    const report = await this.analytics.run(ctx, name, query);
+    if (query.format !== 'csv') return report;
+
+    const cells = (row: Record<string, string | number | null>): CsvCell[] =>
+      report.columns.map((column) => row[column.key] ?? null);
+    return csv(
+      reply,
+      `${name}-${report.from ?? 'as-of'}-${report.to ?? ''}.csv`,
+      [
+        report.columns.map((column) => column.label),
+        ...report.rows.map(cells),
+        ...(report.totals ? [cells(report.totals)] : []),
       ],
       query.decimal,
     );

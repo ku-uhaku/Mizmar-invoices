@@ -10,6 +10,7 @@ import { useT } from '@/lib/i18n/provider';
 import { DocBadges } from '@/components/doc-badges';
 import { DocumentEditor } from '@/components/document-editor';
 import { DocumentView } from '@/components/document-view';
+import { DocumentPayments } from '@/components/document-payments';
 import { DocumentHistory } from '@/components/audit-log';
 import { ConvertDialog } from '@/components/dialogs/convert-dialog';
 import { EmailDialog } from '@/components/dialogs/email-dialog';
@@ -311,6 +312,10 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
       )}
 
       {isDraft ? <DocumentEditor document={document} /> : <DocumentView document={document} />}
+
+      {!isDraft && settles && (
+        <DocumentPayments documentId={document.id} currency={document.currency} />
+      )}
 
       <div className="mt-4">
         <DocumentHistory documentId={document.id} />

@@ -280,6 +280,8 @@ export class AuthService {
         name: c.name,
         defaultCurrency: c.defaultCurrency,
         defaultLocale: c.defaultLocale,
+        posEnabled: c.posEnabled,
+        posRequireSession: c.posRequireSession,
       })),
       permissions: ability.rules as unknown as Array<Record<string, unknown>>,
     };
@@ -350,7 +352,7 @@ export class AuthService {
   private async resolveCompanies(
     organizationId: string,
     role: Role,
-    granted: Array<{ id: string; code: string; name: string; defaultCurrency: string; defaultLocale: 'EN' | 'FR' | 'AR'; isActive: boolean }>,
+    granted: Array<{ id: string; code: string; name: string; defaultCurrency: string; defaultLocale: 'EN' | 'FR' | 'AR'; posEnabled: boolean; posRequireSession: boolean; isActive: boolean }>,
   ) {
     // Owners and admins reach every company without needing explicit grants,
     // which keeps adding a new legal entity from locking its own admins out.

@@ -411,10 +411,30 @@ export const paymentCreate = z.object({
   paidAt: isoDate,
   clearedAt: isoDate.nullish(),
   note: z.string().max(1000).optional(),
+  /** Set by the till: the open cash session this payment belongs to. */
+  cashSessionId: uuid.nullish(),
   /** Omit amounts to settle oldest-first automatically. */
   allocations: z
     .array(z.object({ documentId: uuid, amount: decimalInput.optional() }))
     .min(1),
+});
+
+/**
+ * Correct a recorded payment. Every field is optional. `allocations`, when
+ * sent, replaces the whole split; omit it to leave the split as it is (a
+ * payment with a single allocation follows an amount change automatically).
+ */
+export const paymentUpdate = z.object({
+  method: paymentCreate.shape.method.optional(),
+  reference: z.string().max(100).nullish(),
+  amount: decimalInput.optional(),
+  paidAt: isoDate.optional(),
+  clearedAt: isoDate.nullish(),
+  note: z.string().max(1000).nullish(),
+  allocations: z
+    .array(z.object({ documentId: uuid, amount: decimalInput.optional() }))
+    .min(1)
+    .optional(),
 });
 
 export const payment = z.object({

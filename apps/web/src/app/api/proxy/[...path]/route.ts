@@ -53,6 +53,10 @@ async function handle(
     status: upstream.status,
     headers: {
       'content-type': upstream.headers.get('content-type') ?? 'application/json',
+      // Product pictures are immutable per id; let the browser keep them.
+      ...(upstream.headers.get('cache-control')
+        ? { 'cache-control': upstream.headers.get('cache-control')! }
+        : {}),
     },
   });
 

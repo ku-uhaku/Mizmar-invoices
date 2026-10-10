@@ -9,3 +9,5 @@ export * from './documents/payment-terms';
 export * from './inventory/stock-impact';
 export * from './pricing';
 export * from './recurring/schedule';
+export * from './hr/leave';
+export * from './hr/payroll';

@@ -76,6 +76,17 @@ export const variantInput = z.object({
   isActive: z.boolean().default(true),
 });
 
+export const productImage = z.object({
+  id: uuid,
+  assetId: uuid,
+  /** Path under the API, e.g. /api/v1/assets/<id>/file; the web app serves it through its proxy. */
+  url: z.string(),
+  sortOrder: z.number().int(),
+});
+
+export const productImageOrder = z.object({ imageIds: z.array(uuid).min(1).max(20) });
+export const variantImageBody = z.object({ assetId: uuid.nullable() });
+
 export const product = z.object({
   id: uuid,
   name: z.string(),
@@ -92,6 +103,8 @@ export const product = z.object({
   attributeTypeIds: z.array(uuid),
   variants: z.array(productVariant),
   imageUrls: z.array(z.string()),
+  /** Gallery in display order; the first image is the main one. */
+  images: z.array(productImage),
   /** Rolled up across every warehouse, for the product list. */
   totalOnHand: decimalString.optional(),
   lowStockVariantCount: z.number().int().optional(),
@@ -191,5 +204,17 @@ export const variantSearchResult = z.object({
 });
 
 export type Product = z.infer<typeof product>;
+export type ProductImage = z.infer<typeof productImage>;
 export type ProductVariant = z.infer<typeof productVariant>;
 export type VariantSearchResult = z.infer<typeof variantSearchResult>;
+
+export const unit = z.object({ id: uuid, code: z.string(), name: z.string() });
+export const unitCreate = z.object({
+  code: z.string().trim().min(1).max(20),
+  name: z.string().trim().min(1).max(60).optional(),
+});
+/** Values already used on products, to pick from instead of retyping. */
+export const productFacets = z.object({
+  categories: z.array(z.string()),
+  brands: z.array(z.string()),
+});

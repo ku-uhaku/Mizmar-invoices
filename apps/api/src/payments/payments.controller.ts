@@ -25,6 +25,22 @@ export class PaymentsController {
     }));
   }
 
+  @TsRestHandler(apiContract.payments.get)
+  get(@Ctx() ctx: RequestContext) {
+    return tsRestHandler(apiContract.payments.get, async ({ params }) => ({
+      status: 200 as const,
+      body: await this.payments.get(ctx, params.id),
+    }));
+  }
+
+  @TsRestHandler(apiContract.payments.update)
+  update(@Ctx() ctx: RequestContext) {
+    return tsRestHandler(apiContract.payments.update, async ({ params, body }) => ({
+      status: 200 as const,
+      body: await this.payments.update(ctx, params.id, body),
+    }));
+  }
+
   @TsRestHandler(apiContract.payments.remove)
   remove(@Ctx() ctx: RequestContext) {
     return tsRestHandler(apiContract.payments.remove, async ({ params }) => {

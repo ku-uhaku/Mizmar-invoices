@@ -73,6 +73,12 @@ type Abilities =
   | [Action, 'StockTransfer']
   | [Action, 'Settings']
   | [Action, 'AuditLog']
+  | [Action, 'Expense']
+  | [Action, 'Cash']
+  | [Action, 'Employee']
+  | [Action, 'Leave']
+  | [Action, 'Attendance']
+  | [Action, 'Payroll']
   | [Action, 'Document' | Tagged<'Document', DocumentSubject>]
   | [Action, 'Contact' | Tagged<'Contact', ContactSubject>]
   | [Action, 'Membership' | Tagged<'Membership', MembershipSubject>]
@@ -119,6 +125,9 @@ export function defineAbilityFor(ctx: AbilityContext): AppAbility {
       can('manage', 'Document', inCompany);
       can('manage', 'Payment', inCompany);
       can('manage', 'Contact');
+      can('manage', 'Expense');
+      can('manage', 'Cash');
+      can('manage', 'Payroll');
       can('export', 'Report');
       can('configure', 'TemplateConfig', inCompany);
       // Accountants price and invoice; they do not restate inventory valuation.
@@ -136,6 +145,11 @@ export function defineAbilityFor(ctx: AbilityContext): AppAbility {
       can('create', 'Contact');
       can('update', 'Contact', { createdById: ctx.userId });
       can('read', 'Payment', inCompany);
+      // A cashier takes the money for the sales they make at the till.
+      can('create', 'Payment', inCompany);
+      can('read', 'Cash');
+      can('create', 'Cash');
+      can('update', 'Cash');
       can('read', 'Document', { ...inCompany, side: 'SALES' });
       can('create', 'Document', { ...inCompany, side: 'SALES' });
       can('update', 'Document', {
@@ -187,6 +201,8 @@ export function defineAbilityFor(ctx: AbilityContext): AppAbility {
       can('read', 'all');
       cannot('read', 'ProductVariant', ['costPrice', 'averageCost']);
       cannot('read', 'AuditLog');
+      // Pay is confidential: a read-only seat sees the directory, never salaries.
+      cannot('read', 'Payroll');
       break;
   }
 

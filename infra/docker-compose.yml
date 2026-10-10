@@ -42,6 +42,11 @@ services:
     container_name: mizmar-s3
     restart: unless-stopped
     command: server -dir=/data -ip=0.0.0.0 -s3 -s3.port=8333 -master.volumeSizeLimitMB=256
+    # Recent SeaweedFS refuses unknown keys and cannot auto-create buckets
+    # without an admin identity; these must match S3_ACCESS_KEY / S3_SECRET_KEY.
+    environment:
+      AWS_ACCESS_KEY_ID: mizmar
+      AWS_SECRET_ACCESS_KEY: mizmar-secret
     ports:
       - '8333:8333'
       - '9333:9333'

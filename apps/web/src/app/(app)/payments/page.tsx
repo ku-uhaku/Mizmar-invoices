@@ -1,15 +1,15 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import type { documentSchemas } from '@mizmar/contracts';
+import type { z } from 'zod';
 import Link from 'next/link';
 import { useState } from 'react';
-import { api, ApiError, unwrap } from '@/lib/api';
+import { api, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
 import {
   Badge,
-  Button,
   Card,
-  Dialog,
   EmptyState,
   IconButton,
   PageHeader,
@@ -17,35 +17,21 @@ import {
   TableSkeleton,
   Td,
   Th,
-  toast,
 } from '@/components/ui';
+import { CancelPaymentDialog, EditPaymentDialog } from '@/components/dialogs/payment-edit-dialog';
 import { date, money, PAYMENT_METHOD_LABELS } from '@/lib/format';
 import { useT } from '@/lib/i18n/provider';
 
+type Payment = z.infer<typeof documentSchemas.payment>;
+
 export default function PaymentsPage() {
   const t = useT();
-  const queryClient = useQueryClient();
-  const [toRemove, setToRemove] = useState<{ id: string; contactName: string; amount: string } | null>(
-    null,
-  );
+  const [editing, setEditing] = useState<Payment | null>(null);
+  const [cancelling, setCancelling] = useState<Payment | null>(null);
 
   const payments = useQuery({
     queryKey: ['payments', 'all'],
     queryFn: async () => unwrap(await api.payments.list({ query: { limit: 100 } })),
-  });
-
-  const remove = useMutation({
-    mutationFn: async (id: string) => unwrap(await api.payments.remove({ params: { id } })),
-    onSuccess: () => {
-      // Removing a payment reopens the invoices it settled.
-      void queryClient.invalidateQueries();
-      toast.success(t('Paiement supprimé'));
-      setToRemove(null);
-    },
-    onError: (cause) => {
-      setToRemove(null);
-      toast.error(cause instanceof ApiError ? cause.message : t('Suppression impossible'));
-    },
   });
 
   const count = payments.data?.items.length;
@@ -116,19 +102,28 @@ export default function PaymentsPage() {
                     {money(payment.amount, payment.currency)}
                   </Td>
                   <Td>
+                    <span className="flex items-center gap-1">
+                    <a
+                      href={`/receipt/${payment.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={t('Reçu')}
+                      aria-label={t('Reçu')}
+                      className="inline-flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
+                    >
+                      <Icon name="printer" />
+                    </a>
+                    <IconButton label={t('Modifier')} onClick={() => setEditing(payment)}>
+                      <Icon name="edit" />
+                    </IconButton>
                     <IconButton
-                      label={t('Supprimer')}
-                      onClick={() =>
-                        setToRemove({
-                          id: payment.id,
-                          contactName: payment.contactName,
-                          amount: money(payment.amount, payment.currency),
-                        })
-                      }
+                      label={t('Annuler le paiement')}
+                      onClick={() => setCancelling(payment)}
                       className="hover:bg-danger-soft hover:text-danger"
                     >
                       <Icon name="x" />
                     </IconButton>
+                    </span>
                   </Td>
                 </tr>
               ))}
@@ -143,33 +138,8 @@ export default function PaymentsPage() {
         )}
       </Card>
 
-      {toRemove && (
-        <Dialog
-          open
-          onClose={() => setToRemove(null)}
-          title={t('Supprimer ce paiement ?')}
-          description={t(
-            'Le paiement de {amount} de {name} sera supprimé et les factures concernées redeviendront impayées.',
-            { amount: toRemove.amount, name: toRemove.contactName },
-          )}
-          footer={
-            <>
-              <Button variant="ghost" onClick={() => setToRemove(null)}>
-                {t('Annuler')}
-              </Button>
-              <Button
-                variant="danger"
-                loading={remove.isPending}
-                onClick={() => remove.mutate(toRemove.id)}
-              >
-                {t('Supprimer')}
-              </Button>
-            </>
-          }
-        >
-          <></>
-        </Dialog>
-      )}
+      {editing && <EditPaymentDialog payment={editing} onClose={() => setEditing(null)} />}
+      {cancelling && <CancelPaymentDialog payment={cancelling} onClose={() => setCancelling(null)} />}
     </>
   );
 }

@@ -2,6 +2,7 @@ import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -107,6 +108,15 @@ export class StorageService implements OnModuleInit {
     const body = result.Body;
     if (!body) throw new Error(`Object ${key} has no body`);
     return Buffer.from(await body.transformToByteArray());
+  }
+
+  /** Best effort: a leftover object is harmless, a failed request must not block the caller. */
+  async delete(bucket: Bucket, key: string): Promise<void> {
+    try {
+      await this.client.send(new DeleteObjectCommand({ Bucket: this.buckets[bucket], Key: key }));
+    } catch (error) {
+      this.logger.warn(`Could not delete ${key}: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   async exists(bucket: Bucket, key: string): Promise<boolean> {

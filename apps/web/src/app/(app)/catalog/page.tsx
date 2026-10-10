@@ -6,7 +6,10 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
+import { FacetPicker, UnitPicker } from '@/components/catalog-pickers';
 import { ImportDialog } from '@/components/import-dialog';
+import { ProductImageManager, StagedImagePicker, Thumb } from '@/components/product-images';
+import { uploadProductImages, type GalleryImage } from '@/lib/product-images';
 import {
   Badge,
   Button,
@@ -37,9 +40,12 @@ interface ProductRow {
   reference: string | null;
   category: string | null;
   brand: string | null;
+  unitId: string | null;
   description: string | null;
   defaultVatRate: string;
   isActive: boolean;
+  images: GalleryImage[];
+  imageUrls: string[];
 }
 
 function CatalogScreen() {
@@ -171,11 +177,16 @@ function CatalogScreen() {
                       </button>
                     </Td>
                     <Td>
-                      <span className="font-semibold text-ink">{product.name}</span>
-                      <div className="text-xs text-ink-muted">
-                        {product.reference ?? '—'}
-                        {product.brand ? ` · ${product.brand}` : ''}
-                      </div>
+                      <span className="flex items-center gap-3">
+                        <Thumb url={product.imageUrls[0]} />
+                        <span>
+                          <span className="font-semibold text-ink">{product.name}</span>
+                          <div className="text-xs text-ink-muted">
+                            {product.reference ?? '—'}
+                            {product.brand ? ` · ${product.brand}` : ''}
+                          </div>
+                        </span>
+                      </span>
                     </Td>
                     <Td className="text-ink-muted">{product.category ?? '—'}</Td>
                     <Td numeric>{product.variants.length}</Td>
@@ -331,12 +342,15 @@ function NewProductDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [name, setName] = useState('');
   const [reference, setReference] = useState('');
   const [category, setCategory] = useState('');
+  const [brand, setBrand] = useState('');
+  const [unitId, setUnitId] = useState('');
   const [vatRate, setVatRate] = useState('20');
   const [sellingPrice, setSellingPrice] = useState('0');
   const [costPrice, setCostPrice] = useState('0');
   const [threshold, setThreshold] = useState('0');
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [photos, setPhotos] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const attributes = useQuery({
@@ -400,6 +414,8 @@ function NewProductDialog({ open, onClose }: { open: boolean; onClose: () => voi
             name,
             reference: reference || undefined,
             category: category || undefined,
+            brand: brand || undefined,
+            unitId: unitId || undefined,
             defaultVatRate: vatRate,
             isVariantManaged: combinations.length > 0,
             isService: false,
@@ -409,13 +425,23 @@ function NewProductDialog({ open, onClose }: { open: boolean; onClose: () => voi
         }),
       );
     },
-    onSuccess: () => {
+    onSuccess: async (created) => {
+      // The product exists now, so the chosen photos can be attached to it.
+      if (photos.length > 0) {
+        try {
+          await uploadProductImages(created.id, photos);
+        } catch {
+          toast.error(t('Produit créé, mais les photos n’ont pas pu être envoyées. Ajoutez-les via « Modifier ».'));
+        }
+      }
       void queryClient.invalidateQueries({ queryKey: ['products'] });
+      void queryClient.invalidateQueries({ queryKey: ['product-facets'] });
       toast.success(t('Produit créé'));
       setName('');
       setReference('');
       setSelected({});
       setExcluded(new Set());
+      setPhotos([]);
       onClose();
     },
     onError: (cause) => setError(cause instanceof ApiError ? cause.message : t('Création impossible')),
@@ -447,6 +473,8 @@ function NewProductDialog({ open, onClose }: { open: boolean; onClose: () => voi
       <div className="space-y-4">
         <ErrorNote>{error}</ErrorNote>
 
+        <StagedImagePicker files={photos} onChange={setPhotos} />
+
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={t('Nom')} required>
             <Input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
@@ -458,7 +486,13 @@ function NewProductDialog({ open, onClose }: { open: boolean; onClose: () => voi
             />
           </Field>
           <Field label={t('Catégorie')}>
-            <Input value={category} onChange={(event) => setCategory(event.target.value)} />
+            <FacetPicker kind="categories" value={category} onChange={setCategory} />
+          </Field>
+          <Field label={t('Marque')}>
+            <FacetPicker kind="brands" value={brand} onChange={setBrand} />
+          </Field>
+          <Field label={t('Unité')}>
+            <UnitPicker value={unitId} onChange={setUnitId} />
           </Field>
           <Field label={t('TVA (%)')}>
             <NumberInput value={vatRate} onChange={(event) => setVatRate(event.target.value)} />
@@ -579,9 +613,11 @@ function EditProductDialog({ product, onClose }: { product: ProductRow; onClose:
   const [reference, setReference] = useState(product.reference ?? '');
   const [category, setCategory] = useState(product.category ?? '');
   const [brand, setBrand] = useState(product.brand ?? '');
+  const [unitId, setUnitId] = useState(product.unitId ?? '');
   const [description, setDescription] = useState(product.description ?? '');
   const [vatRate, setVatRate] = useState(String(Number(product.defaultVatRate)));
   const [isActive, setIsActive] = useState(product.isActive);
+  const [images, setImages] = useState<GalleryImage[]>(product.images);
   const [error, setError] = useState<string | null>(null);
 
   const save = useMutation({
@@ -595,6 +631,7 @@ function EditProductDialog({ product, onClose }: { product: ProductRow; onClose:
             reference: reference.trim(),
             category: category.trim(),
             brand: brand.trim(),
+            ...(unitId ? { unitId } : {}),
             description: description.trim(),
             defaultVatRate: vatRate,
             isActive,
@@ -604,6 +641,7 @@ function EditProductDialog({ product, onClose }: { product: ProductRow; onClose:
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
+      void queryClient.invalidateQueries({ queryKey: ['product-facets'] });
       toast.success(t('Produit mis à jour'));
       onClose();
     },
@@ -634,6 +672,14 @@ function EditProductDialog({ product, onClose }: { product: ProductRow; onClose:
     >
       <div className="space-y-4">
         <ErrorNote>{error}</ErrorNote>
+        <ProductImageManager
+          productId={product.id}
+          images={images}
+          onChange={(next) => {
+            setImages(next);
+            void queryClient.invalidateQueries({ queryKey: ['products'] });
+          }}
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={t('Nom')} required>
             <Input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
@@ -642,10 +688,19 @@ function EditProductDialog({ product, onClose }: { product: ProductRow; onClose:
             <Input value={reference} onChange={(event) => setReference(event.target.value)} />
           </Field>
           <Field label={t('Catégorie')}>
-            <Input value={category} onChange={(event) => setCategory(event.target.value)} />
+            <FacetPicker kind="categories" value={category} onChange={setCategory} />
           </Field>
           <Field label={t('Marque')}>
-            <Input value={brand} onChange={(event) => setBrand(event.target.value)} />
+            <FacetPicker kind="brands" value={brand} onChange={setBrand} />
+          </Field>
+          <Field label={t('Unité')}>
+            <UnitPicker value={unitId} onChange={setUnitId} />
+          </Field>
+          <Field label={t('Marque')}>
+            <FacetPicker kind="brands" value={brand} onChange={setBrand} />
+          </Field>
+          <Field label={t('Unité')}>
+            <UnitPicker value={unitId} onChange={setUnitId} />
           </Field>
           <Field label={t('TVA (%)')}>
             <NumberInput value={vatRate} onChange={(event) => setVatRate(event.target.value)} />

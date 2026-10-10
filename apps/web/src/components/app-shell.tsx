@@ -12,6 +12,7 @@ import { LOCALE_NAMES } from '@/lib/i18n/locale';
 import { useLocale, useT } from '@/lib/i18n/provider';
 import { Icon, type IconName } from './icons';
 import { Avatar, IconButton } from './ui';
+import { usePosSettings } from '@/lib/use-pos';
 
 interface NavItem {
   href: string;
@@ -19,6 +20,8 @@ interface NavItem {
   icon: IconName;
   /** Document type, when the entry is a filtered view of /documents. */
   type?: string;
+  /** Hidden when the caisse is switched off for the active company. */
+  pos?: boolean;
 }
 
 const NAV: Array<{ group: string; items: NavItem[] }> = [
@@ -29,6 +32,8 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
   {
     group: 'Ventes',
     items: [
+      { href: '/pos', label: 'Caisse', icon: 'wallet', pos: true },
+      { href: '/pos/sessions', label: 'Sessions de caisse', icon: 'clock', pos: true },
       { href: '/documents?type=DEVIS', label: 'Devis', icon: 'quote', type: 'DEVIS' },
       { href: '/documents?type=SALES_ORDER', label: 'Bons de commande', icon: 'order', type: 'SALES_ORDER' },
       { href: '/documents?type=DELIVERY_NOTE', label: 'Bons de livraison', icon: 'truck', type: 'DELIVERY_NOTE' },
@@ -44,6 +49,7 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
       { href: '/documents?type=PURCHASE_ORDER', label: 'Commandes fournisseur', icon: 'cart', type: 'PURCHASE_ORDER' },
       { href: '/documents?type=GOODS_RECEIPT', label: 'Bons de réception', icon: 'download', type: 'GOODS_RECEIPT' },
       { href: '/documents?type=PURCHASE_INVOICE', label: "Factures d'achat", icon: 'invoice', type: 'PURCHASE_INVOICE' },
+      { href: '/expenses', label: 'Dépenses et factures', icon: 'wallet' },
     ],
   },
   {
@@ -59,8 +65,19 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
     ],
   },
   {
+    group: 'Ressources humaines',
+    items: [
+      { href: '/hr', label: 'Vue d’ensemble RH', icon: 'dashboard' },
+      { href: '/hr/employees', label: 'Employés', icon: 'users' },
+      { href: '/hr/leave', label: 'Congés', icon: 'clock' },
+      { href: '/hr/attendance', label: 'Présences', icon: 'check' },
+      { href: '/hr/payroll', label: 'Paie', icon: 'wallet' },
+    ],
+  },
+  {
     group: 'Rapports',
     items: [
+      { href: '/reports', label: 'Tous les rapports', icon: 'dashboard' },
       { href: '/reports/sales', label: 'Rapport des ventes', icon: 'trending' },
       { href: '/reports/vat', label: 'Déclaration de TVA', icon: 'invoice' },
       { href: '/reports/statements', label: 'Relevé de compte', icon: 'file' },
@@ -121,6 +138,7 @@ function Shell({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
   });
 
+  const pos = usePosSettings();
   const companies = session.data?.companies ?? [];
   const active = companies.find((company) => company.id === companyId) ?? companies[0];
 
@@ -179,7 +197,7 @@ function Shell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4 pt-2" aria-label={t('Navigation principale')}>
-          {NAV.map((section) => (
+          {NAV.map((section) => ({ ...section, items: section.items.filter((item) => pos.enabled || !item.pos) })).map((section) => (
             <div key={section.group}>
               <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-side-muted/80">
                 {t(section.group)}
@@ -404,6 +422,7 @@ interface PaletteEntry {
 }
 
 function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const posEnabled = usePosSettings().enabled;
   const t = useT();
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -421,7 +440,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
 
   const entries = useMemo<PaletteEntry[]>(() => {
     const pages = NAV.flatMap((section) =>
-      section.items.map((item) => ({
+      section.items.filter((item) => posEnabled || !item.pos).map((item) => ({
         id: item.href,
         label: t(item.label),
         hint: t(section.group),
@@ -450,7 +469,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
       });
     }
     return matches;
-  }, [query, t]);
+  }, [query, t, posEnabled]);
 
   useEffect(() => setCursor(0), [query]);
 

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 
 /** Stroke icons (24px grid). One component, one path table: easy to audit. */
 const PATHS = {
+  edit: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
   dashboard: 'M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z',
   quote: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h4',
   order: 'M9 4h6l1 2h3v15H5V6h3zM9 12l2 2 4-4',

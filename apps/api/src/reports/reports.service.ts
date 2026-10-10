@@ -161,8 +161,22 @@ export class ReportsService {
           buckets: (d.vatBreakdown as VatBucketJson[] | null) ?? [],
         }));
 
+    // Utility and overhead bills carry deductible input VAT too.
+    const expenses = await this.prisma.expense.findMany({
+      where: {
+        companyId: ctx.companyId,
+        status: { in: ['UNPAID', 'PARTIAL', 'PAID'] },
+        issueDate: { gte: from, lte: to },
+      },
+      select: { vatRate: true, amountExclVat: true, vatAmount: true },
+    });
+    const expenseVat: VatDocument[] = expenses.map((e) => ({
+      sign: 1 as const,
+      buckets: [{ rate: e.vatRate.toFixed(), base: e.amountExclVat.toFixed(), amount: e.vatAmount.toFixed() }],
+    }));
+
     const sales = aggregateVat(toVat('SALES'));
-    const purchases = aggregateVat(toVat('PURCHASE_INVOICE'));
+    const purchases = aggregateVat([...toVat('PURCHASE_INVOICE'), ...expenseVat]);
 
     return {
       currency,

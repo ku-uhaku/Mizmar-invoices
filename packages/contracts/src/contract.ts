@@ -6,6 +6,7 @@ import * as catalog from './catalog';
 import * as contacts from './contacts';
 import * as dashboard from './dashboard';
 import * as docs from './documents';
+import * as expenses from './expenses';
 import * as imports from './imports';
 import * as inventory from './inventory';
 import * as receivables from './receivables';
@@ -294,6 +295,22 @@ const catalogContract = c.router(
       body: catalog.attributeTypeCreate.partial(),
       responses: { 200: catalog.attributeType, ...commonErrorResponses },
     },
+    listUnits: {
+      method: 'GET',
+      path: '/units',
+      responses: { 200: z.array(catalog.unit), ...commonErrorResponses },
+    },
+    createUnit: {
+      method: 'POST',
+      path: '/units',
+      body: catalog.unitCreate,
+      responses: { 201: catalog.unit, ...commonErrorResponses },
+    },
+    productFacets: {
+      method: 'GET',
+      path: '/product-facets',
+      responses: { 200: catalog.productFacets, ...commonErrorResponses },
+    },
     listProducts: {
       method: 'GET',
       path: '/products',
@@ -574,6 +591,7 @@ const paymentsContract = c.router(
       headers: companyHeader,
       query: z.object({
         contactId: uuid.optional(),
+        documentId: uuid.optional(),
         from: z.string().optional(),
         to: z.string().optional(),
         cursor: z.string().optional(),
@@ -589,15 +607,163 @@ const paymentsContract = c.router(
       responses: { 201: docs.payment, ...commonErrorResponses },
       summary: 'Record a payment and allocate it across documents',
     },
+    get: {
+      method: 'GET',
+      path: '/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      responses: { 200: docs.payment, ...commonErrorResponses },
+      summary: 'One payment, for the printable receipt (reçu)',
+    },
+    update: {
+      method: 'PATCH',
+      path: '/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: docs.paymentUpdate,
+      responses: { 200: docs.payment, ...commonErrorResponses },
+      summary: 'Correct a payment: amount, method, dates, reference, split across documents',
+    },
     remove: {
       method: 'DELETE',
       path: '/:id',
       pathParams: idParams,
       headers: companyHeader,
       responses: { 200: ok, ...commonErrorResponses },
+      summary: 'Cancel a payment; the documents it settled become payable again',
     },
   },
   { pathPrefix: '/payments' },
+);
+
+const expensesContract = c.router(
+  {
+    listCategories: {
+      method: 'GET',
+      path: '/categories',
+      headers: companyHeader,
+      responses: { 200: z.array(expenses.expenseCategory), ...commonErrorResponses },
+    },
+    createCategory: {
+      method: 'POST',
+      path: '/categories',
+      headers: companyHeader,
+      body: expenses.expenseCategoryCreate,
+      responses: { 201: expenses.expenseCategory, ...commonErrorResponses },
+    },
+    updateCategory: {
+      method: 'PATCH',
+      path: '/categories/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: expenses.expenseCategoryCreate.partial(),
+      responses: { 200: expenses.expenseCategory, ...commonErrorResponses },
+    },
+    summary: {
+      method: 'GET',
+      path: '/summary',
+      headers: companyHeader,
+      responses: { 200: expenses.expenseSummary, ...commonErrorResponses },
+      summary: 'Unpaid, overdue and due-soon bills for the dashboard strip',
+    },
+    listRecurring: {
+      method: 'GET',
+      path: '/recurring',
+      headers: companyHeader,
+      responses: { 200: z.array(expenses.recurringExpense), ...commonErrorResponses },
+    },
+    createRecurring: {
+      method: 'POST',
+      path: '/recurring',
+      headers: companyHeader,
+      body: expenses.recurringExpenseCreate,
+      responses: { 201: expenses.recurringExpense, ...commonErrorResponses },
+    },
+    updateRecurring: {
+      method: 'PATCH',
+      path: '/recurring/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: expenses.recurringExpenseUpdate,
+      responses: { 200: expenses.recurringExpense, ...commonErrorResponses },
+    },
+    removeRecurring: {
+      method: 'DELETE',
+      path: '/recurring/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      responses: { 200: ok, ...commonErrorResponses },
+    },
+    generateRecurring: {
+      method: 'POST',
+      path: '/recurring/generate',
+      headers: companyHeader,
+      body: z.object({}),
+      responses: { 200: expenses.generateResponse, ...commonErrorResponses },
+      summary: 'Create the bills that are due now (also runs on a timer)',
+    },
+    list: {
+      method: 'GET',
+      path: '',
+      headers: companyHeader,
+      query: expenses.expenseListQuery,
+      responses: { 200: paginated(expenses.expense), ...commonErrorResponses },
+    },
+    create: {
+      method: 'POST',
+      path: '',
+      headers: companyHeader,
+      body: expenses.expenseCreate,
+      responses: { 201: expenses.expense, ...commonErrorResponses },
+    },
+    get: {
+      method: 'GET',
+      path: '/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      responses: { 200: expenses.expense, ...commonErrorResponses },
+    },
+    update: {
+      method: 'PATCH',
+      path: '/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: expenses.expenseUpdate,
+      responses: { 200: expenses.expense, ...commonErrorResponses },
+    },
+    cancel: {
+      method: 'POST',
+      path: '/:id/cancel',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: z.object({}),
+      responses: { 200: expenses.expense, ...commonErrorResponses },
+    },
+    remove: {
+      method: 'DELETE',
+      path: '/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      responses: { 200: ok, ...commonErrorResponses },
+      summary: 'Delete a bill that has no payments',
+    },
+    pay: {
+      method: 'POST',
+      path: '/:id/payments',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: expenses.expensePaymentCreate,
+      responses: { 201: expenses.expense, ...commonErrorResponses },
+    },
+    removePayment: {
+      method: 'DELETE',
+      path: '/:id/payments/:paymentId',
+      pathParams: z.object({ id: uuid, paymentId: uuid }),
+      headers: companyHeader,
+      responses: { 200: expenses.expense, ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/expenses' },
 );
 
 const dashboardContract = c.router(
@@ -927,6 +1093,7 @@ export const apiContract = c.router(
     receivables: receivablesContract,
     pricing: pricingContract,
     recurring: recurringContract,
+    expenses: expensesContract,
   },
   {
     pathPrefix: '/api/v1',

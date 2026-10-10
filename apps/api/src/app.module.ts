@@ -27,6 +27,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ReceivablesModule } from './receivables/receivables.module';
 import { ReportsModule } from './reports/reports.module';
 import { RecurringModule } from './recurring/recurring.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { HrModule } from './hr/hr.module';
+import { PayrollModule } from './payroll/payroll.module';
+import { CashModule } from './cash/cash.module';
 
 @Module({
   imports: [
@@ -80,6 +84,10 @@ import { RecurringModule } from './recurring/recurring.module';
     ReportsModule,
     PricingModule,
     RecurringModule,
+    ExpensesModule,
+    HrModule,
+    PayrollModule,
+    CashModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

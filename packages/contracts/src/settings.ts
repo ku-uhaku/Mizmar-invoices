@@ -53,6 +53,10 @@ export const company = z.object({
   roundingGranularity: roundingGranularityEnum,
   negativeStockPolicy: negativeStockPolicyEnum,
   defaultWarehouseId: uuid.nullable(),
+  /** Point of sale (caisse) switched on for this company. */
+  posEnabled: z.boolean(),
+  /** A sale at the till needs an open cash session. */
+  posRequireSession: z.boolean(),
   isActive: z.boolean(),
 });
 

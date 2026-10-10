@@ -12,6 +12,7 @@ import { DocumentsService } from '../documents/documents.service';
 
 type Payment = z.infer<typeof documentSchemas.payment>;
 type PaymentCreate = z.infer<typeof documentSchemas.paymentCreate>;
+type PaymentUpdate = z.infer<typeof documentSchemas.paymentUpdate>;
 
 @Injectable()
 export class PaymentsService {
@@ -22,7 +23,7 @@ export class PaymentsService {
 
   async list(
     ctx: RequestContext,
-    query: { contactId?: string; from?: string; to?: string; cursor?: string; limit: number },
+    query: { contactId?: string; documentId?: string; from?: string; to?: string; cursor?: string; limit: number },
   ): Promise<Page<Payment>> {
     this.assertCanRead(ctx);
     const cursor = decodeCursor(query.cursor);
@@ -31,6 +32,7 @@ export class PaymentsService {
       where: {
         companyId: ctx.companyId,
         ...(query.contactId ? { contactId: query.contactId } : {}),
+        ...(query.documentId ? { allocations: { some: { documentId: query.documentId } } } : {}),
         ...(query.from || query.to
           ? {
               paidAt: {
@@ -61,6 +63,16 @@ export class PaymentsService {
     return { nextCursor: page.nextCursor, items: page.items.map((row) => mapPayment(row)) };
   }
 
+  async get(ctx: RequestContext, id: string): Promise<Payment> {
+    this.assertCanRead(ctx);
+    const row = await this.prisma.payment.findFirst({
+      where: { id, companyId: ctx.companyId },
+      include: paymentInclude,
+    });
+    if (!row) throw AppError.notFound('Payment');
+    return mapPayment(row);
+  }
+
   /**
    * Record a payment and allocate it across documents.
    *
@@ -71,6 +83,18 @@ export class PaymentsService {
   async create(ctx: RequestContext, body: PaymentCreate): Promise<Payment> {
     if (!ctx.ability.can('create', 'Payment')) {
       throw AppError.forbidden('Your role may not record payments');
+    }
+
+    // A payment taken at the till must belong to an open session of this company.
+    if (body.cashSessionId) {
+      const session = await this.prisma.cashSession.findFirst({
+        where: { id: body.cashSessionId, register: { companyId: ctx.companyId } },
+        select: { status: true },
+      });
+      if (!session) throw AppError.notFound('Cash session', body.cashSessionId);
+      if (session.status !== 'OPEN') {
+        throw AppError.unprocessable('SESSION_CLOSED', 'This cash session is closed');
+      }
     }
 
     const documentIds = body.allocations.map((allocation) => allocation.documentId);
@@ -199,6 +223,7 @@ export class PaymentsService {
           clearedAt: body.clearedAt ? new Date(body.clearedAt) : null,
           note: body.note ?? null,
           createdById: ctx.userId,
+          cashSessionId: body.cashSessionId ?? null,
           allocations: {
             create: allocations.map((allocation) => ({
               documentId: allocation.documentId,
@@ -224,6 +249,169 @@ export class PaymentsService {
     return mapPayment(row);
   }
 
+  /**
+   * Correct a payment in place. Allocations are re-validated against what each
+   * document owes *without* this payment, so editing never trips over its own
+   * previous allocation. Every document touched before or after is re-settled.
+   */
+  async update(ctx: RequestContext, id: string, body: PaymentUpdate): Promise<Payment> {
+    if (!ctx.ability.can('update', 'Payment')) {
+      throw AppError.forbidden('Your role may not edit payments');
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: { id, companyId: ctx.companyId },
+      include: {
+        allocations: true,
+        cashSession: { select: { status: true } },
+      },
+    });
+    if (!payment) throw AppError.notFound('Payment', id);
+    if (payment.cashSession?.status === 'CLOSED') {
+      throw AppError.unprocessable(
+        'SESSION_CLOSED',
+        'This payment belongs to a closed cash session and cannot be edited',
+      );
+    }
+
+    const amount = body.amount !== undefined ? dec(body.amount) : dec(payment.amount.toFixed());
+    if (amount.lte(0)) {
+      throw AppError.badRequest('INVALID_AMOUNT', 'A payment must be greater than zero');
+    }
+
+    // Work out the new split.
+    let wanted: Array<{ documentId: string; amount?: string }>;
+    if (body.allocations) {
+      wanted = body.allocations;
+    } else if (body.amount !== undefined && payment.allocations.length > 1) {
+      throw AppError.badRequest(
+        'ALLOCATIONS_REQUIRED',
+        'This payment settles several documents; say how the new amount is split',
+      );
+    } else if (body.amount !== undefined) {
+      wanted = payment.allocations.map((allocation) => ({
+        documentId: allocation.documentId,
+        amount: amount.toFixed(2),
+      }));
+    } else {
+      wanted = payment.allocations.map((allocation) => ({
+        documentId: allocation.documentId,
+        amount: allocation.amount.toFixed(),
+      }));
+    }
+
+    const documentIds = [...new Set(wanted.map((allocation) => allocation.documentId))];
+    const documents = await this.prisma.document.findMany({
+      where: { id: { in: documentIds }, companyId: ctx.companyId },
+      select: {
+        id: true,
+        type: true,
+        contactId: true,
+        number: true,
+        lifecycle: true,
+        totalInclVat: true,
+        paidAmount: true,
+        issueDate: true,
+      },
+      orderBy: { issueDate: 'asc' },
+    });
+    if (documents.length !== documentIds.length) throw AppError.notFound('One or more documents');
+
+    const mine = new Map(
+      payment.allocations.map((allocation) => [allocation.documentId, dec(allocation.amount.toFixed())]),
+    );
+    const requested = new Map(wanted.map((allocation) => [allocation.documentId, allocation.amount]));
+
+    let remaining = amount;
+    const allocations: Array<{ documentId: string; amount: string }> = [];
+
+    for (const document of documents) {
+      if (document.contactId !== payment.contactId) {
+        throw AppError.badRequest(
+          'CONTACT_MISMATCH',
+          `${document.number ?? 'A document'} belongs to a different contact`,
+        );
+      }
+      // A document this payment already settled stays editable even if it was
+      // since cancelled; newly added ones must be live and payable.
+      if (!mine.has(document.id)) {
+        if (document.lifecycle === 'DRAFT' || document.lifecycle === 'CANCELLED') {
+          throw AppError.unprocessable(
+            'DOCUMENT_NOT_PAYABLE',
+            `${document.number ?? 'A document'} must be validated before it can be paid`,
+          );
+        }
+        if (!documentMeta(document.type).settles) {
+          throw AppError.unprocessable(
+            'DOCUMENT_NOT_PAYABLE',
+            `A ${document.type} does not carry a balance`,
+          );
+        }
+      }
+
+      const outstanding = dec(document.totalInclVat.toFixed())
+        .abs()
+        .minus(dec(document.paidAmount.toFixed()).abs())
+        .plus(mine.get(document.id) ?? dec(0));
+      const explicit = requested.get(document.id);
+      const take = explicit !== undefined ? dec(explicit) : minOf(outstanding, remaining);
+      if (take.lte(0)) continue;
+
+      if (take.gt(outstanding)) {
+        throw AppError.unprocessable(
+          'OVER_ALLOCATION',
+          `${document.number ?? 'A document'} only has ${outstanding.toFixed(2)} outstanding`,
+          { documentId: document.id, outstanding: outstanding.toFixed(2) },
+        );
+      }
+      if (take.gt(remaining)) {
+        throw AppError.unprocessable(
+          'ALLOCATION_EXCEEDS_PAYMENT',
+          'The allocations add up to more than the payment amount',
+          { amount: amount.toFixed(2) },
+        );
+      }
+      allocations.push({ documentId: document.id, amount: take.toFixed(2) });
+      remaining = remaining.minus(take);
+    }
+
+    if (allocations.length === 0) {
+      throw AppError.unprocessable('NOTHING_TO_ALLOCATE', 'The payment must settle at least one document');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.paymentAllocation.deleteMany({ where: { paymentId: id } });
+      await tx.payment.update({
+        where: { id },
+        data: {
+          ...(body.method !== undefined ? { method: body.method } : {}),
+          ...(body.reference !== undefined ? { reference: body.reference || null } : {}),
+          ...(body.note !== undefined ? { note: body.note || null } : {}),
+          ...(body.paidAt !== undefined ? { paidAt: new Date(body.paidAt) } : {}),
+          ...(body.clearedAt !== undefined
+            ? { clearedAt: body.clearedAt ? new Date(body.clearedAt) : null }
+            : {}),
+          amount: toPrismaDecimal(amount),
+          allocations: {
+            create: allocations.map((allocation) => ({
+              documentId: allocation.documentId,
+              amount: toPrismaDecimal(allocation.amount),
+            })),
+          },
+        },
+      });
+      const touched = new Set([
+        ...payment.allocations.map((allocation) => allocation.documentId),
+        ...allocations.map((allocation) => allocation.documentId),
+      ]);
+      for (const documentId of touched) {
+        await this.documents.refreshSettlement(tx, documentId);
+      }
+    });
+
+    return this.get(ctx, id);
+  }
+
   async remove(ctx: RequestContext, id: string): Promise<void> {
     if (!ctx.ability.can('delete', 'Payment')) {
       throw AppError.forbidden('Your role may not delete payments');
@@ -231,9 +419,19 @@ export class PaymentsService {
 
     const payment = await this.prisma.payment.findFirst({
       where: { id, companyId: ctx.companyId },
-      include: { allocations: { select: { documentId: true } } },
+      include: {
+        allocations: { select: { documentId: true } },
+        cashSession: { select: { status: true } },
+      },
     });
     if (!payment) throw AppError.notFound('Payment', id);
+    // A closed session's Z report is final; its payments cannot be taken back.
+    if (payment.cashSession?.status === 'CLOSED') {
+      throw AppError.unprocessable(
+        'SESSION_CLOSED',
+        'This payment belongs to a closed cash session and cannot be deleted',
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
       const affected = payment.allocations.map((allocation) => allocation.documentId);

@@ -42,6 +42,8 @@ export const companySummary = z.object({
   name: z.string(),
   defaultCurrency: z.string(),
   defaultLocale: localeEnum,
+  posEnabled: z.boolean(),
+  posRequireSession: z.boolean(),
 });
 
 export const sessionUser = z.object({

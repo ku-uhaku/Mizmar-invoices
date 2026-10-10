@@ -130,3 +130,80 @@ export type SalesReportResponse = z.infer<typeof salesReportResponse>;
 export type VatReportResponse = z.infer<typeof vatReportResponse>;
 export type StatementReportResponse = z.infer<typeof statementReportResponse>;
 export type StockValuationResponse = z.infer<typeof stockValuationResponse>;
+
+// ---------------------------------------------------------------------------
+// Generic table reports
+//
+// Most analytic reports are "a few columns, a list of rows, maybe a totals
+// line", so they share one response shape and one web view. Column labels are
+// French source text (translated by the UI); `label`-typed cells are enum-like
+// values the UI translates too.
+// ---------------------------------------------------------------------------
+
+export const tableColumnType = z.enum(['text', 'label', 'money', 'qty', 'int', 'percent', 'date']);
+
+export const tableColumn = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: tableColumnType,
+});
+
+export const tableCell = z.union([z.string(), z.number(), z.null()]);
+
+export const tableReportResponse = z.object({
+  currency: z.string(),
+  from: isoDate.nullable(),
+  to: isoDate.nullable(),
+  columns: z.array(tableColumn),
+  rows: z.array(z.record(tableCell)),
+  totals: z.record(tableCell).nullable(),
+});
+
+export const tableReportName = z.enum([
+  'profit-loss',
+  'cash-flow',
+  'payments-by-method',
+  'payables-ageing',
+  'margin',
+  'purchases',
+  'stock-movements',
+  'low-stock',
+  'slow-movers',
+  'stock-counts',
+  'stock-transfers',
+  'cash-up',
+  'user-activity',
+  'recurring-runs',
+  'expenses-by-category',
+  'utility-trend',
+  'upcoming-bills',
+  'headcount',
+  'leave-balances',
+  'attendance-summary',
+  'payroll-register',
+  'cnss-declaration',
+  'payroll-by-department',
+  'ir-annual',
+  'cash-sessions',
+  'cash-movements',
+]);
+
+export const tableReportQuery = z.object({
+  /** Defaults to 1 January of the current year. */
+  from: isoDate.optional(),
+  /** Defaults to today. */
+  to: isoDate.optional(),
+  format: reportFormat,
+  decimal: csvDecimal,
+  groupBy: z.string().max(30).optional(),
+  period: z.enum(['day', 'week', 'month']).optional(),
+  warehouseId: uuid.optional(),
+  /** Slow movers: no sale for this many days. */
+  days: z.coerce.number().int().min(1).max(3650).default(90),
+  /** Expense category kind for the utility trend; defaults to UTILITY. */
+  kind: z.string().max(30).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
+});
+
+export type TableReportResponse = z.infer<typeof tableReportResponse>;
+export type TableReportName = z.infer<typeof tableReportName>;

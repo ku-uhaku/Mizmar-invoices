@@ -1,7 +1,7 @@
 'use client';
 
 import { initClient, isErrorResponse, type ClientInferResponseBody } from '@ts-rest/core';
-import { apiContract, type ErrorBody } from '@mizmar/contracts';
+import { apiContract, moduleContract, type ErrorBody } from '@mizmar/contracts';
 
 /**
  * The typed API client.
@@ -12,6 +12,14 @@ import { apiContract, type ErrorBody } from '@mizmar/contracts';
  * breaks the build instead of the page.
  */
 export const api = initClient(apiContract, {
+  baseUrl: '/api/proxy',
+  baseHeaders: {},
+  jsonQuery: true,
+  throwOnUnknownStatus: false,
+});
+
+/** HR (and later payroll) live in their own contract; same proxy, same conventions. */
+export const apiModules = initClient(moduleContract, {
   baseUrl: '/api/proxy',
   baseHeaders: {},
   jsonQuery: true,

@@ -130,3 +130,44 @@ describe('VIEWER', () => {
     expect(ability.can('read', 'AuditLog')).toBe(false);
   });
 });
+
+describe('expense and payroll access', () => {
+  it.each([
+    ['OWNER', true, true],
+    ['ADMIN', true, true],
+    ['ACCOUNTANT', true, true],
+    ['SALES', false, false],
+    ['WAREHOUSE', false, false],
+    ['VIEWER', true, false],
+  ] as const)('%s: expenses=%s payroll=%s', (role, expenses, payroll) => {
+    const ability = defineAbilityFor(ctx(role));
+    expect(ability.can('read', 'Expense')).toBe(expenses);
+    expect(ability.can('read', 'Payroll')).toBe(payroll);
+  });
+
+  it('only owner, admin and accountant may write expenses', () => {
+    expect(defineAbilityFor(ctx('ACCOUNTANT')).can('create', 'Expense')).toBe(true);
+    expect(defineAbilityFor(ctx('VIEWER')).can('create', 'Expense')).toBe(false);
+  });
+});
+
+describe('till (caisse) access', () => {
+  it('lets a cashier open, move cash in and close a session but not delete', () => {
+    const ability = defineAbilityFor(ctx('SALES'));
+    expect(ability.can('create', 'Cash')).toBe(true);
+    expect(ability.can('update', 'Cash')).toBe(true);
+    expect(ability.can('delete', 'Cash')).toBe(false);
+    expect(ability.can('create', subject('Payment', { companyId: 'co-1' }))).toBe(true);
+    expect(ability.can('delete', subject('Payment', { companyId: 'co-1' }))).toBe(false);
+  });
+  it('keeps the warehouse role away from the till', () => {
+    const ability = defineAbilityFor(ctx('WAREHOUSE'));
+    expect(ability.can('read', 'Cash')).toBe(false);
+  });
+  it('lets an accountant manage it and a viewer only read', () => {
+    expect(defineAbilityFor(ctx('ACCOUNTANT')).can('delete', 'Cash')).toBe(true);
+    const viewer = defineAbilityFor(ctx('VIEWER'));
+    expect(viewer.can('read', 'Cash')).toBe(true);
+    expect(viewer.can('create', 'Cash')).toBe(false);
+  });
+});

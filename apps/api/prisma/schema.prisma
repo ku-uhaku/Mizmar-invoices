@@ -208,18 +208,19 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companies      Company[]
-  memberships    Membership[]
-  contacts       Contact[]
-  attributeTypes AttributeType[]
-  products       Product[]
-  warehouses     Warehouse[]
-  priceLists     PriceList[]
-  units          Unit[]
-  assets         Asset[]
-  auditLogs      AuditLog[]
-  countSessions  StockCountSession[]
-  transfers      StockTransfer[]
+  companies         Company[]
+  memberships       Membership[]
+  contacts          Contact[]
+  attributeTypes    AttributeType[]
+  products          Product[]
+  warehouses        Warehouse[]
+  priceLists        PriceList[]
+  units             Unit[]
+  assets            Asset[]
+  expenseCategories ExpenseCategory[]
+  auditLogs         AuditLog[]
+  countSessions     StockCountSession[]
+  transfers         StockTransfer[]
 
   @@map("organizations")
 }
@@ -236,13 +237,13 @@ model Company {
   legalName String?
 
   // Moroccan legal identifiers printed on every document.
-  ice           String?
-  rc            String?
-  taxId         String? /// Identifiant Fiscal (IF)
-  patente       String?
-  cnss          String?
-  shareCapital  Decimal? @db.Decimal(18, 2)
-  legalForm     String?
+  ice          String?
+  rc           String?
+  taxId        String? /// Identifiant Fiscal (IF)
+  patente      String?
+  cnss         String?
+  shareCapital Decimal? @db.Decimal(18, 2)
+  legalForm    String?
 
   email   String?
   phone   String?
@@ -273,6 +274,11 @@ model Company {
   roundingGranularity RoundingGranularity @default(LINE)
   negativeStockPolicy NegativeStockPolicy @default(BLOCK)
 
+  /// Point of sale (caisse): the whole module can be switched off per company.
+  posEnabled        Boolean @default(true)
+  /// When true, a sale at the till needs an open cash session.
+  posRequireSession Boolean @default(false)
+
   defaultWarehouseId String?    @db.Uuid
   defaultWarehouse   Warehouse? @relation("CompanyDefaultWarehouse", fields: [defaultWarehouseId], references: [id], onDelete: SetNull)
 
@@ -284,14 +290,25 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companyAccess   CompanyAccess[]
-  documents       Document[]
-  payments        Payment[]
-  numberSequences NumberSequence[]
-  templateConfigs TemplateConfig[]
-  vatRates        VatRate[]
-  exchangeRates   ExchangeRate[]
+  companyAccess     CompanyAccess[]
+  documents         Document[]
+  payments          Payment[]
+  numberSequences   NumberSequence[]
+  templateConfigs   TemplateConfig[]
+  vatRates          VatRate[]
+  exchangeRates     ExchangeRate[]
   recurringInvoices RecurringInvoice[]
+  expenses          Expense[]
+  recurringExpenses RecurringExpense[]
+  departments       Department[]
+  employees         Employee[]
+  leaveTypes        LeaveType[]
+  leaveRequests     LeaveRequest[]
+  attendance        AttendanceRecord[]
+  payrollRuleSets   PayrollRuleSet[]
+  cashRegisters     CashRegister[]
+  payrollRuns       PayrollRun[]
+  salaryAdvances    SalaryAdvance[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -313,17 +330,20 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  memberships   Membership[]
-  refreshTokens RefreshToken[]
+  memberships         Membership[]
+  refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
-  auditLogs     AuditLog[]
+  auditLogs           AuditLog[]
 
-  createdContacts  Contact[]           @relation("ContactCreatedBy")
-  createdDocuments Document[]          @relation("DocumentCreatedBy")
-  recurringInvoices RecurringInvoice[]
-  movements        StockMovement[]
-  countSessions    StockCountSession[]
-  payments         Payment[]
+  createdContacts    Contact[]           @relation("ContactCreatedBy")
+  createdDocuments   Document[]          @relation("DocumentCreatedBy")
+  recurringInvoices  RecurringInvoice[]
+  movements          StockMovement[]
+  countSessions      StockCountSession[]
+  payments           Payment[]
+  cashSessionsOpened CashSession[]       @relation("CashSessionOpenedBy")
+  cashSessionsClosed CashSession[]       @relation("CashSessionClosedBy")
+  cashMovements      CashMovement[]      @relation("CashMovementBy")
 
   @@map("users")
 }
@@ -375,10 +395,10 @@ model CompanyAccess {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  userId    String   @db.Uuid
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @db.Uuid
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash    String    @unique
   /// Rotation chain: the token this one replaced, so reuse of an old token is detectable.
   replacedById String?   @db.Uuid
   expiresAt    DateTime
@@ -455,12 +475,12 @@ model Contact {
   phone2  String?
   website String?
 
-  paymentTerm    PaymentTerm @default(IMMEDIATE)
+  paymentTerm     PaymentTerm @default(IMMEDIATE)
   paymentTermDays Int?
-  creditLimit    Decimal?    @db.Decimal(18, 2)
-  defaultCurrency String     @default("MAD")
+  creditLimit     Decimal?    @db.Decimal(18, 2)
+  defaultCurrency String      @default("MAD")
   defaultLocale   Locale?
-  vatExempt      Boolean     @default(false)
+  vatExempt       Boolean     @default(false)
 
   priceListId String?    @db.Uuid
   priceList   PriceList? @relation(fields: [priceListId], references: [id], onDelete: SetNull)
@@ -473,11 +493,13 @@ model Contact {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  addresses ContactAddress[]
-  people    ContactPerson[]
-  documents Document[]
-  payments  Payment[]
+  addresses         ContactAddress[]
+  people            ContactPerson[]
+  documents         Document[]
+  payments          Payment[]
   recurringInvoices RecurringInvoice[]
+  expenses          Expense[]
+  recurringExpenses RecurringExpense[]
 
   @@unique([organizationId, code])
   @@index([organizationId, kind])
@@ -549,7 +571,7 @@ model AttributeType {
   code      String
   sortOrder Int    @default(0)
 
-  values           AttributeValue[]
+  values            AttributeValue[]
   productAttributes ProductAttribute[]
 
   @@unique([organizationId, code])
@@ -608,12 +630,12 @@ model Product {
 
 /// Which attribute dimensions this product varies on, and in what order.
 model ProductAttribute {
-  id        String        @id @default(uuid(7)) @db.Uuid
-  productId String        @db.Uuid
-  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  attributeTypeId String  @db.Uuid
+  id              String        @id @default(uuid(7)) @db.Uuid
+  productId       String        @db.Uuid
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attributeTypeId String        @db.Uuid
   attributeType   AttributeType @relation(fields: [attributeTypeId], references: [id], onDelete: Cascade)
-  sortOrder Int           @default(0)
+  sortOrder       Int           @default(0)
 
   @@unique([productId, attributeTypeId])
   @@map("product_attributes")
@@ -636,8 +658,8 @@ model ProductVariant {
   productId String  @db.Uuid
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  sku     String
-  barcode String?
+  sku          String
+  barcode      String?
   /// Cached "Red / L" label so lists and PDFs do not have to join attributes.
   variantLabel String?
 
@@ -686,9 +708,9 @@ model PriceList {
   organizationId String       @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  name     String
-  currency String  @default("MAD")
-  isActive Boolean @default(true)
+  name      String
+  currency  String    @default("MAD")
+  isActive  Boolean   @default(true)
   /// Inclusive validity window; null means open-ended on that side.
   validFrom DateTime? @db.Date
   validTo   DateTime? @db.Date
@@ -708,9 +730,9 @@ model PriceListItem {
   variantId   String         @db.Uuid
   variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
-  price            Decimal  @db.Decimal(18, 6)
-  minQuantity      Decimal  @default(0) @db.Decimal(18, 6)
-  discountPercent  Decimal? @db.Decimal(6, 3)
+  price           Decimal  @db.Decimal(18, 6)
+  minQuantity     Decimal  @default(0) @db.Decimal(18, 6)
+  discountPercent Decimal? @db.Decimal(6, 3)
 
   @@unique([priceListId, variantId, minQuantity])
   @@map("price_list_items")
@@ -733,15 +755,15 @@ model Warehouse {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  stockLevels     StockLevel[]
-  movements       StockMovement[]
-  reservations    StockReservation[]
-  documents       Document[]
-  documentLines   DocumentLine[]
-  defaultForCompanies Company[]        @relation("CompanyDefaultWarehouse")
-  countSessions   StockCountSession[]
-  transfersFrom   StockTransfer[]      @relation("TransferSource")
-  transfersTo     StockTransfer[]      @relation("TransferDestination")
+  stockLevels         StockLevel[]
+  movements           StockMovement[]
+  reservations        StockReservation[]
+  documents           Document[]
+  documentLines       DocumentLine[]
+  defaultForCompanies Company[]           @relation("CompanyDefaultWarehouse")
+  countSessions       StockCountSession[]
+  transfersFrom       StockTransfer[]     @relation("TransferSource")
+  transfersTo         StockTransfer[]     @relation("TransferDestination")
 
   @@unique([organizationId, code])
   @@map("warehouses")
@@ -757,10 +779,10 @@ model StockLevel {
   warehouseId String         @db.Uuid
   warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
-  onHand   Decimal @default(0) @db.Decimal(18, 6)
-  reserved Decimal @default(0) @db.Decimal(18, 6)
+  onHand      Decimal @default(0) @db.Decimal(18, 6)
+  reserved    Decimal @default(0) @db.Decimal(18, 6)
   /// Expected inbound from validated purchase orders not yet received.
-  incoming Decimal @default(0) @db.Decimal(18, 6)
+  incoming    Decimal @default(0) @db.Decimal(18, 6)
   /// Weighted average cost in this warehouse, recomputed on every receipt.
   /// Outbound movements stamp it onto the ledger row so margin reporting stays
   /// correct after the average moves on.
@@ -783,16 +805,16 @@ model StockMovement {
   warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
 
   /// Signed: negative leaves the warehouse, positive enters it.
-  quantity  Decimal        @db.Decimal(18, 6)
+  quantity  Decimal           @db.Decimal(18, 6)
   direction StockDirection
   type      MovementType
   reason    AdjustmentReason?
 
   /// Unit cost at the moment of the movement, so margin reporting stays
   /// historically correct after the average cost moves on.
-  unitCost        Decimal? @db.Decimal(18, 6)
+  unitCost         Decimal? @db.Decimal(18, 6)
   /// On-hand after applying this row, for a readable ledger view.
-  balanceAfter    Decimal  @db.Decimal(18, 6)
+  balanceAfter     Decimal  @db.Decimal(18, 6)
   averageCostAfter Decimal? @db.Decimal(18, 6)
 
   documentId     String?       @db.Uuid
@@ -800,9 +822,9 @@ model StockMovement {
   documentLineId String?       @db.Uuid
   documentLine   DocumentLine? @relation(fields: [documentLineId], references: [id], onDelete: SetNull)
 
-  countLineId    String?         @db.Uuid
-  countLine      StockCountLine? @relation(fields: [countLineId], references: [id], onDelete: SetNull)
-  transferLineId String?         @db.Uuid
+  countLineId    String?            @db.Uuid
+  countLine      StockCountLine?    @relation(fields: [countLineId], references: [id], onDelete: SetNull)
+  transferLineId String?            @db.Uuid
   transferLine   StockTransferLine? @relation(fields: [transferLineId], references: [id], onDelete: SetNull)
 
   /// The compensating row this one reverses, when cancelling a document.
@@ -859,9 +881,9 @@ model StockCountSession {
   status    CountSessionStatus @default(OPEN)
   note      String?
 
-  startedById String?  @db.Uuid
-  startedBy   User?    @relation(fields: [startedById], references: [id], onDelete: SetNull)
-  startedAt   DateTime @default(now())
+  startedById String?   @db.Uuid
+  startedBy   User?     @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  startedAt   DateTime  @default(now())
   postedAt    DateTime?
 
   lines StockCountLine[]
@@ -879,8 +901,8 @@ model StockCountLine {
   variant   ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
 
   /// Snapshot of on-hand when the line was opened, for variance reporting.
-  expectedQuantity Decimal  @db.Decimal(18, 6)
-  countedQuantity  Decimal? @db.Decimal(18, 6)
+  expectedQuantity Decimal   @db.Decimal(18, 6)
+  countedQuantity  Decimal?  @db.Decimal(18, 6)
   note             String?
   countedAt        DateTime?
 
@@ -895,7 +917,7 @@ model StockTransfer {
   organizationId String       @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  reference     String
+  reference              String
   sourceWarehouseId      String    @db.Uuid
   sourceWarehouse        Warehouse @relation("TransferSource", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
   destinationWarehouseId String    @db.Uuid
@@ -915,10 +937,10 @@ model StockTransfer {
 }
 
 model StockTransferLine {
-  id         String        @id @default(uuid(7)) @db.Uuid
-  transferId String        @db.Uuid
-  transfer   StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
-  variantId  String        @db.Uuid
+  id         String         @id @default(uuid(7)) @db.Uuid
+  transferId String         @db.Uuid
+  transfer   StockTransfer  @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  variantId  String         @db.Uuid
   variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
 
   quantity Decimal @db.Decimal(18, 6)
@@ -1004,18 +1026,18 @@ model Document {
   templateConfigId String?         @db.Uuid
   templateConfig   TemplateConfig? @relation(fields: [templateConfigId], references: [id], onDelete: SetNull)
 
-  createdById String?   @db.Uuid
-  createdBy   User?     @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  validatedAt DateTime?
-  sentAt      DateTime?
-  cancelledAt DateTime?
+  createdById  String?   @db.Uuid
+  createdBy    User?     @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  validatedAt  DateTime?
+  sentAt       DateTime?
+  cancelledAt  DateTime?
   cancelReason String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   lines         DocumentLine[]
-  linksFrom     DocumentLink[]      @relation("LinkSource")
-  linksTo       DocumentLink[]      @relation("LinkTarget")
+  linksFrom     DocumentLink[]        @relation("LinkSource")
+  linksTo       DocumentLink[]        @relation("LinkTarget")
   snapshots     DocumentSnapshot[]
   movements     StockMovement[]
   reservations  StockReservation[]
@@ -1048,10 +1070,10 @@ model DocumentLine {
   variantLabel String?
   unitCode     String?
 
-  quantity  Decimal @db.Decimal(18, 6)
-  unitPrice Decimal @default(0) @db.Decimal(18, 6)
+  quantity  Decimal  @db.Decimal(18, 6)
+  unitPrice Decimal  @default(0) @db.Decimal(18, 6)
   unitCost  Decimal? @db.Decimal(18, 6)
-  vatRate   Decimal @default(20) @db.Decimal(6, 3)
+  vatRate   Decimal  @default(20) @db.Decimal(6, 3)
 
   discountKind  DiscountKind?
   discountValue Decimal?      @db.Decimal(18, 6)
@@ -1128,15 +1150,15 @@ model DocumentSnapshot {
   documentId String   @db.Uuid
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
-  version              Int
-  payload              Json
-  templateConfigHash   String
-  templateConfigId     String? @db.Uuid
-  locale               Locale
+  version            Int
+  payload            Json
+  templateConfigHash String
+  templateConfigId   String?   @db.Uuid
+  locale             Locale
   /// Object-storage key of the rendered PDF, if it has been rendered yet.
-  pdfStorageKey        String?
-  pdfRenderedAt        DateTime?
-  pdfByteSize          Int?
+  pdfStorageKey      String?
+  pdfRenderedAt      DateTime?
+  pdfByteSize        Int?
 
   createdAt DateTime @default(now())
 
@@ -1159,10 +1181,10 @@ model Payment {
   method    PaymentMethod    @default(BANK_TRANSFER)
   reference String?
 
-  amount       Decimal  @db.Decimal(18, 2)
-  currency     String   @default("MAD")
-  exchangeRate Decimal  @default(1) @db.Decimal(18, 8)
-  paidAt       DateTime @db.Date
+  amount       Decimal   @db.Decimal(18, 2)
+  currency     String    @default("MAD")
+  exchangeRate Decimal   @default(1) @db.Decimal(18, 8)
+  paidAt       DateTime  @db.Date
   /// Cheques and bills of exchange clear later than they are recorded.
   clearedAt    DateTime? @db.Date
   note         String?
@@ -1172,8 +1194,13 @@ model Payment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  /// Set when the payment was taken at the till during a cash session.
+  cashSessionId String?      @db.Uuid
+  cashSession   CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+
   allocations PaymentAllocation[]
 
+  @@index([cashSessionId])
   @@index([companyId, paidAt])
   @@index([contactId])
   @@map("payments")
@@ -1239,7 +1266,7 @@ model TemplateConfig {
   companyId String  @db.Uuid
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  name String
+  name         String
   /// Null means this template is the company default for every type.
   documentType DocumentType?
   isDefault    Boolean       @default(false)
@@ -1287,7 +1314,8 @@ model Asset {
 
   createdAt DateTime @default(now())
 
-  companyLogos  Company[]      @relation("CompanyLogo")
+  expenseScans  Expense[]
+  companyLogos  Company[]        @relation("CompanyLogo")
   variantImages ProductVariant[] @relation("VariantImage")
   productImages ProductImage[]
 
@@ -1406,4 +1434,531 @@ model RecurringInvoiceRun {
   @@unique([recurringId, scheduledFor])
   @@index([documentId])
   @@map("recurring_invoice_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Expenses and utility bills
+// ---------------------------------------------------------------------------
+
+enum ExpenseCategoryKind {
+  UTILITY
+  RENT
+  INSURANCE
+  FUEL
+  SUPPLIES
+  SALARY
+  TAX
+  OTHER
+}
+
+enum ExpenseStatus {
+  DRAFT
+  UNPAID
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+/// Electricity, water, internet, rent... shared by every company of the organisation.
+model ExpenseCategory {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  organizationId String              @db.Uuid
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  kind           ExpenseCategoryKind @default(OTHER)
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+
+  expenses          Expense[]
+  recurringExpenses RecurringExpense[]
+
+  @@unique([organizationId, name])
+  @@map("expense_categories")
+}
+
+/// A bill or cost that is not a stocked purchase: no supplier is required and
+/// there are no document lines. Payments are tracked on the expense itself.
+model Expense {
+  id         String          @id @default(uuid(7)) @db.Uuid
+  companyId  String          @db.Uuid
+  company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  categoryId String          @db.Uuid
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  supplierId String?         @db.Uuid
+  supplier   Contact?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  /// The provider's bill number.
+  reference   String?
+  description String?
+  issueDate   DateTime  @db.Date
+  dueDate     DateTime? @db.Date
+  /// Consumption period covered by a utility bill.
+  periodStart DateTime? @db.Date
+  periodEnd   DateTime? @db.Date
+
+  currency      String        @default("MAD")
+  amountExclVat Decimal       @db.Decimal(18, 2)
+  vatRate       Decimal       @default(0) @db.Decimal(5, 2)
+  vatAmount     Decimal       @db.Decimal(18, 2)
+  totalInclVat  Decimal       @db.Decimal(18, 2)
+  paidAmount    Decimal       @default(0) @db.Decimal(18, 2)
+  status        ExpenseStatus @default(UNPAID)
+
+  scanAssetId String? @db.Uuid
+  scanAsset   Asset?  @relation(fields: [scanAssetId], references: [id], onDelete: SetNull)
+
+  /// Set when generated by a RecurringExpense; unique with `recurringPeriod` so a run is idempotent.
+  recurringId     String?           @db.Uuid
+  recurring       RecurringExpense? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  recurringPeriod DateTime?         @db.Date
+
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  payments ExpensePayment[]
+
+  @@unique([recurringId, recurringPeriod])
+  @@index([companyId, issueDate])
+  @@index([companyId, status, dueDate])
+  @@index([categoryId])
+  @@map("expenses")
+}
+
+model ExpensePayment {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  expenseId   String        @db.Uuid
+  expense     Expense       @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  method      PaymentMethod
+  amount      Decimal       @db.Decimal(18, 2)
+  paidAt      DateTime      @db.Date
+  reference   String?
+  note        String?
+  createdById String        @db.Uuid
+  createdAt   DateTime      @default(now())
+
+  @@index([expenseId])
+  @@index([paidAt])
+  @@map("expense_payments")
+}
+
+/// Generates an Expense each period (the monthly electricity bill...). The
+/// amount is an estimate the user corrects when the real bill arrives.
+model RecurringExpense {
+  id         String          @id @default(uuid(7)) @db.Uuid
+  companyId  String          @db.Uuid
+  company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  categoryId String          @db.Uuid
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  supplierId String?         @db.Uuid
+  supplier   Contact?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  name          String
+  amountExclVat Decimal            @db.Decimal(18, 2)
+  vatRate       Decimal            @default(0) @db.Decimal(5, 2)
+  currency      String             @default("MAD")
+  frequency     RecurringFrequency
+  interval      Int                @default(1)
+  /// Days between the issue date and the due date.
+  dueInDays     Int                @default(15)
+  startDate     DateTime           @db.Date
+  endDate       DateTime?          @db.Date
+  /// Local date of the next bill to generate; null once the series is over.
+  nextRunAt     DateTime?          @db.Date
+  isActive      Boolean            @default(true)
+
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  expenses Expense[]
+
+  @@index([isActive, nextRunAt])
+  @@index([companyId])
+  @@map("recurring_expenses")
+}
+
+// ---------------------------------------------------------------------------
+// Human resources
+// ---------------------------------------------------------------------------
+
+enum EmployeeStatus {
+  ACTIVE
+  TERMINATED
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
+enum ContractType {
+  CDI
+  CDD
+  ANAPEC
+  INTERN
+  OTHER
+}
+
+enum SalaryPeriod {
+  MONTHLY
+  HOURLY
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HOLIDAY
+  LEAVE
+}
+
+model Department {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  companyId String   @db.Uuid
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  employees Employee[]
+
+  @@unique([companyId, name])
+  @@map("departments")
+}
+
+model Employee {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  companyId      String  @db.Uuid
+  company        Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeNumber String
+  firstName      String
+  lastName       String
+  /// Optional login account of this person.
+  userId         String? @db.Uuid
+
+  /// Carte d'identité nationale.
+  cin             String?
+  cnssNumber      String?
+  birthDate       DateTime?   @db.Date
+  hireDate        DateTime    @db.Date
+  terminationDate DateTime?   @db.Date
+  jobTitle        String?
+  departmentId    String?     @db.Uuid
+  department      Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  phone    String?
+  email    String?
+  address  String?
+  bankName String?
+  rib      String?
+
+  status        EmployeeStatus @default(ACTIVE)
+  maritalStatus MaritalStatus  @default(SINGLE)
+  /// Dependent children and spouse counted for the income-tax family deduction.
+  dependents    Int            @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contracts  EmploymentContract[]
+  leave      LeaveRequest[]
+  attendance AttendanceRecord[]
+  payslips   Payslip[]
+  advances   SalaryAdvance[]
+
+  @@unique([companyId, employeeNumber])
+  @@index([companyId, status])
+  @@map("employees")
+}
+
+model EmploymentContract {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  employeeId   String       @db.Uuid
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type         ContractType @default(CDI)
+  startDate    DateTime     @db.Date
+  endDate      DateTime?    @db.Date
+  /// Monthly gross salary, or the hourly rate when salaryPeriod is HOURLY.
+  baseSalary   Decimal      @db.Decimal(18, 2)
+  salaryPeriod SalaryPeriod @default(MONTHLY)
+  weeklyHours  Decimal      @default(44) @db.Decimal(5, 2)
+  isCurrent    Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+
+  @@index([employeeId, isCurrent])
+  @@map("employment_contracts")
+}
+
+model LeaveType {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  companyId   String  @db.Uuid
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  /// Paid leave does not reduce the salary; unpaid leave is deducted by payroll.
+  isPaid      Boolean @default(true)
+  /// Yearly entitlement in working days; 0 = no balance tracked.
+  daysPerYear Decimal @default(0) @db.Decimal(5, 1)
+  isActive    Boolean @default(true)
+
+  requests LeaveRequest[]
+
+  @@unique([companyId, name])
+  @@map("leave_types")
+}
+
+model LeaveRequest {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  companyId   String      @db.Uuid
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId  String      @db.Uuid
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  typeId      String      @db.Uuid
+  type        LeaveType   @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  startDate   DateTime    @db.Date
+  endDate     DateTime    @db.Date
+  /// Working days (Monday to Saturday) unless overridden.
+  days        Decimal     @db.Decimal(5, 1)
+  reason      String?
+  status      LeaveStatus @default(PENDING)
+  decidedById String?     @db.Uuid
+  decidedAt   DateTime?
+  createdById String      @db.Uuid
+  createdAt   DateTime    @default(now())
+
+  @@index([companyId, status])
+  @@index([employeeId, startDate])
+  @@map("leave_requests")
+}
+
+model AttendanceRecord {
+  id              String           @id @default(uuid(7)) @db.Uuid
+  companyId       String           @db.Uuid
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId      String           @db.Uuid
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date            DateTime         @db.Date
+  status          AttendanceStatus @default(PRESENT)
+  /// "HH:MM"
+  checkIn         String?
+  checkOut        String?
+  overtimeMinutes Int              @default(0)
+  note            String?
+
+  @@unique([employeeId, date])
+  @@index([companyId, date])
+  @@map("attendance_records")
+}
+
+// ---------------------------------------------------------------------------
+// Payroll
+// ---------------------------------------------------------------------------
+
+enum PayrollStatus {
+  DRAFT
+  VALIDATED
+  PAID
+}
+
+/// Contribution rates, ceilings and the income-tax scale in force from a date.
+/// The latest row on or before the period wins; none means the built-in defaults.
+model PayrollRuleSet {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  companyId     String   @db.Uuid
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  effectiveFrom DateTime @db.Date
+  rules         Json
+  note          String?
+  createdById   String   @db.Uuid
+  createdAt     DateTime @default(now())
+
+  @@unique([companyId, effectiveFrom])
+  @@map("payroll_rule_sets")
+}
+
+model PayrollRun {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  companyId String        @db.Uuid
+  company   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  year      Int
+  month     Int
+  status    PayrollStatus @default(DRAFT)
+
+  totalGross        Decimal @default(0) @db.Decimal(18, 2)
+  totalNet          Decimal @default(0) @db.Decimal(18, 2)
+  totalEmployerCost Decimal @default(0) @db.Decimal(18, 2)
+
+  validatedAt   DateTime?
+  validatedById String?   @db.Uuid
+  paidAt        DateTime? @db.Date
+  /// The expense recording this month's salary cost, created when the run is paid.
+  expenseId     String?   @db.Uuid
+  createdById   String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  payslips Payslip[]
+
+  @@unique([companyId, year, month])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id         String     @id @default(uuid(7)) @db.Uuid
+  runId      String     @db.Uuid
+  run        PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employeeId String     @db.Uuid
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  /// Who the payslip was issued to, frozen so later edits never rewrite history.
+  employeeSnapshot Json
+  /// The rule set used, frozen for the same reason.
+  rulesSnapshot    Json
+
+  baseSalary      Decimal @db.Decimal(18, 2)
+  weeklyHours     Decimal @default(44) @db.Decimal(5, 2)
+  hourly          Boolean @default(false)
+  dependents      Int     @default(0)
+  proration       Decimal @default(1) @db.Decimal(6, 4)
+  unpaidDays      Decimal @default(0) @db.Decimal(5, 1)
+  overtimeMinutes Int     @default(0)
+  /// [{ label, amount }] taxable additions and after-tax deductions entered by hand.
+  additions       Json    @default("[]")
+  deductions      Json    @default("[]")
+
+  unpaidDeduction      Decimal @db.Decimal(18, 2)
+  overtimePay          Decimal @db.Decimal(18, 2)
+  grossSalary          Decimal @db.Decimal(18, 2)
+  cnssBase             Decimal @db.Decimal(18, 2)
+  cnssEmployee         Decimal @db.Decimal(18, 2)
+  amoEmployee          Decimal @db.Decimal(18, 2)
+  professionalExpenses Decimal @db.Decimal(18, 2)
+  taxableNet           Decimal @db.Decimal(18, 2)
+  incomeTax            Decimal @db.Decimal(18, 2)
+  advanceDeduction     Decimal @default(0) @db.Decimal(18, 2)
+  netPay               Decimal @db.Decimal(18, 2)
+
+  cnssEmployer          Decimal @db.Decimal(18, 2)
+  familyAllowance       Decimal @db.Decimal(18, 2)
+  trainingTax           Decimal @db.Decimal(18, 2)
+  amoEmployer           Decimal @db.Decimal(18, 2)
+  otherEmployer         Decimal @default(0) @db.Decimal(18, 2)
+  employerContributions Decimal @db.Decimal(18, 2)
+  employerCost          Decimal @db.Decimal(18, 2)
+
+  @@unique([runId, employeeId])
+  @@index([employeeId])
+  @@map("payslips")
+}
+
+model SalaryAdvance {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  companyId        String   @db.Uuid
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId       String   @db.Uuid
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  amount           Decimal  @db.Decimal(18, 2)
+  date             DateTime @db.Date
+  /// Taken from each payslip until the advance is repaid.
+  monthlyRepayment Decimal  @db.Decimal(18, 2)
+  repaid           Decimal  @default(0) @db.Decimal(18, 2)
+  note             String?
+  createdById      String   @db.Uuid
+  createdAt        DateTime @default(now())
+
+  @@index([companyId, employeeId])
+  @@map("salary_advances")
+}
+
+// ---------------------------------------------------------------------------
+// Point of sale: registers, cash sessions and till movements
+// ---------------------------------------------------------------------------
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  IN
+  OUT
+}
+
+enum CashMovementReason {
+  DEPOSIT
+  WITHDRAWAL
+  EXPENSE
+  REFUND
+  OTHER
+}
+
+model CashRegister {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  companyId String   @db.Uuid
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  sessions CashSession[]
+
+  @@unique([companyId, name])
+  @@map("cash_registers")
+}
+
+/// One shift at a register: opened with a float, closed with a count.
+model CashSession {
+  id         String            @id @default(uuid(7)) @db.Uuid
+  registerId String            @db.Uuid
+  register   CashRegister      @relation(fields: [registerId], references: [id], onDelete: Restrict)
+  /// Sequence per register, printed on the Z report.
+  number     Int
+  status     CashSessionStatus @default(OPEN)
+
+  openedAt     DateTime @default(now())
+  openedById   String   @db.Uuid
+  openedBy     User     @relation("CashSessionOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  openingFloat Decimal  @db.Decimal(18, 2)
+  openingNote  String?
+
+  closedAt     DateTime?
+  closedById   String?   @db.Uuid
+  closedBy     User?     @relation("CashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  /// Frozen at close so the Z report never changes afterwards.
+  expectedCash Decimal?  @db.Decimal(18, 2)
+  countedCash  Decimal?  @db.Decimal(18, 2)
+  difference   Decimal?  @db.Decimal(18, 2)
+  closingNote  String?
+
+  movements CashMovement[]
+  payments  Payment[]
+
+  @@unique([registerId, number])
+  @@index([registerId, status])
+  @@map("cash_sessions")
+}
+
+/// Cash put into or taken out of the drawer outside of a sale.
+model CashMovement {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  sessionId   String             @db.Uuid
+  session     CashSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type        CashMovementType
+  reason      CashMovementReason @default(OTHER)
+  amount      Decimal            @db.Decimal(18, 2)
+  note        String?
+  createdById String             @db.Uuid
+  createdBy   User               @relation("CashMovementBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime           @default(now())
+
+  @@index([sessionId])
+  @@map("cash_movements")
 }

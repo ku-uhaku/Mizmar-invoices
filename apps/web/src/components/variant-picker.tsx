@@ -1,5 +1,6 @@
 'use client';
 
+import { Thumb } from './product-images';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -131,6 +132,7 @@ export function VariantPicker({
                   index === highlighted ? 'bg-brand-soft' : 'hover:bg-surface-muted',
                 )}
               >
+                <Thumb url={variant.imageUrl} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-ink">
                     {variant.productName}

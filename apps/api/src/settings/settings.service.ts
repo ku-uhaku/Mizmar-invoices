@@ -759,6 +759,8 @@ function companyWriteData(body: CompanyUpdate) {
     ...set(body.roundingGranularity, 'roundingGranularity'),
     ...set(body.negativeStockPolicy, 'negativeStockPolicy'),
     ...set(body.defaultWarehouseId, 'defaultWarehouseId'),
+    ...set(body.posEnabled, 'posEnabled'),
+    ...set(body.posRequireSession, 'posRequireSession'),
   };
 }
 
@@ -800,6 +802,8 @@ function mapCompany(
     roundingGranularity: row.roundingGranularity,
     negativeStockPolicy: row.negativeStockPolicy,
     defaultWarehouseId: row.defaultWarehouseId,
+    posEnabled: row.posEnabled,
+    posRequireSession: row.posRequireSession,
     isActive: row.isActive,
   };
 }

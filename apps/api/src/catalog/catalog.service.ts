@@ -8,6 +8,7 @@ import { decodeCursor, toPage, type Page } from '../common/util/cursor';
 import { qtyOut, rateOut, toPrismaDecimal } from '../common/util/decimal';
 import { PrismaService, type PrismaTx } from '../prisma/prisma.service';
 import type { RequestContext } from '../tenancy/request-context';
+import { assetUrl } from './product-images.service';
 import { StockService, type MovementInput } from '../inventory/stock.service';
 
 type AttributeType = z.infer<typeof catalogSchemas.attributeType>;
@@ -32,6 +33,47 @@ export class CatalogService {
   // =========================================================================
   // Attribute types
   // =========================================================================
+
+  async listUnits(ctx: RequestContext) {
+    const rows = await this.prisma.unit.findMany({
+      where: { organizationId: ctx.organizationId },
+      orderBy: { name: 'asc' },
+      select: { id: true, code: true, name: true },
+    });
+    return rows;
+  }
+
+  async createUnit(ctx: RequestContext, body: { code: string; name?: string }) {
+    if (!ctx.ability.can('manage', 'Product') && !ctx.ability.can('create', 'Product')) {
+      throw AppError.forbidden('Your role may not change the catalog');
+    }
+    const code = body.code.trim();
+    const existing = await this.prisma.unit.findFirst({
+      where: { organizationId: ctx.organizationId, code: { equals: code, mode: 'insensitive' } },
+      select: { id: true, code: true, name: true },
+    });
+    if (existing) return existing;
+    return this.prisma.unit.create({
+      data: { organizationId: ctx.organizationId, code, name: body.name?.trim() || code },
+      select: { id: true, code: true, name: true },
+    });
+  }
+
+  async productFacets(ctx: RequestContext) {
+    const [categories, brands] = await Promise.all(
+      (['category', 'brand'] as const).map((field) =>
+        this.prisma.product.findMany({
+          where: { organizationId: ctx.organizationId, [field]: { not: null } },
+          distinct: [field],
+          select: { [field]: true },
+          orderBy: { [field]: 'asc' },
+        }),
+      ),
+    );
+    const values = (rows: Array<Record<string, unknown>>, field: string) =>
+      rows.map((row) => String(row[field] ?? '').trim()).filter(Boolean);
+    return { categories: values(categories!, 'category'), brands: values(brands!, 'brand') };
+  }
 
   async listAttributeTypes(ctx: RequestContext): Promise<AttributeType[]> {
     const rows = await this.prisma.attributeType.findMany({
@@ -431,6 +473,7 @@ export class CatalogService {
             isService: true,
             defaultVatRate: true,
             unit: { select: { code: true } },
+            images: { orderBy: { sortOrder: 'asc' }, take: 1, select: { assetId: true } },
           },
         },
         stockLevels: warehouseId
@@ -462,7 +505,11 @@ export class CatalogService {
         ...(maySeePrice ? { sellingPrice: qtyOut(variant.sellingPrice) } : {}),
         ...(maySeeCost ? { costPrice: qtyOut(variant.costPrice) } : {}),
         vatRate: rateOut(variant.product.defaultVatRate),
-        imageUrl: null,
+        imageUrl: variant.imageAssetId
+          ? assetUrl(variant.imageAssetId)
+          : variant.product.images[0]
+            ? assetUrl(variant.product.images[0].assetId)
+            : null,
         isService: variant.product.isService,
         onHand: qtyOut(onHand),
         reserved: qtyOut(reserved),
@@ -624,7 +671,12 @@ export class CatalogService {
         ...(maySeePrice ? { sellingPrice: qtyOut(variant.sellingPrice) } : {}),
         minStockThreshold: qtyOut(threshold),
         weightGrams: variant.weightGrams,
-        imageUrl: null,
+        // A variant's own picture wins; otherwise it shows the product's main image.
+        imageUrl: variant.imageAssetId
+          ? assetUrl(variant.imageAssetId)
+          : row.images[0]
+            ? assetUrl(row.images[0].assetId)
+            : null,
         isActive: variant.isActive,
         attributes: variant.attributeValues.map((link) => ({
           attributeTypeId: link.attributeValue.attributeType.id,
@@ -653,7 +705,13 @@ export class CatalogService {
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((attribute) => attribute.attributeTypeId),
       variants,
-      imageUrls: [],
+      imageUrls: row.images.map((image) => assetUrl(image.assetId)),
+      images: row.images.map((image) => ({
+        id: image.id,
+        assetId: image.assetId,
+        url: assetUrl(image.assetId),
+        sortOrder: image.sortOrder,
+      })),
       totalOnHand: qtyOut(totalOnHand),
       lowStockVariantCount,
     };
@@ -661,6 +719,7 @@ export class CatalogService {
 }
 
 const productInclude = {
+  images: { orderBy: { sortOrder: 'asc' }, select: { id: true, assetId: true, sortOrder: true } },
   unit: { select: { code: true } },
   attributes: { select: { attributeTypeId: true, sortOrder: true } },
   variants: {
