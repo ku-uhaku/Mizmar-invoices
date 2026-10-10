@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api';
 import { useLocale, useT } from '@/lib/i18n/provider';
 import { Icon, type IconName } from '@/components/icons';
+import { AgingChart, MonthlyChart, RankBars, SalesTrendChart } from '@/components/dashboard-charts';
 import {
   Card,
   CardHeader,
@@ -121,10 +122,35 @@ export default function DashboardPage() {
 
   const currency = data.currency;
   const totals = data.salesTrend.map((point) => Number(point.total));
-  const trendMax = Math.max(...totals, 1);
   const trendSum = totals.reduce((sum, value) => sum + value, 0);
   const hasSales = trendSum > 0;
   const overdue = Number(data.receivables.overdue) > 0;
+  const fmt = (value: number) => money(String(value), currency);
+  const trendData = data.salesTrend.map((point, index) => ({
+    date: point.date,
+    invoiced: Number(point.total),
+    collected: Number(data.collectedTrend[index]?.total ?? 0),
+  }));
+  const collectedSum = data.collectedTrend.reduce((sum, point) => sum + Number(point.total), 0);
+  const formatMonth = (month: string) =>
+    new Intl.DateTimeFormat(DATE_LOCALES[locale], { month: 'short' }).format(new Date(`${month}-01T12:00:00Z`));
+  const agingLabels = {
+    CURRENT: t('Non échu'),
+    D1_30: '1–30 j',
+    D31_60: '31–60 j',
+    D61_90: '61–90 j',
+    D90_PLUS: '90+ j',
+  } as const;
+  const agingData = data.receivablesAging.map((row) => ({
+    bucket: row.bucket,
+    label: agingLabels[row.bucket],
+    amount: Number(row.amount),
+  }));
+  const hasAging = agingData.some((row) => row.amount > 0);
+  const hasMonthly = data.monthlyTrend.some((row) => Number(row.total) > 0);
+  const previous = Number(data.sales.previousInvoiced);
+  const current = Number(data.sales.invoicedPeriod);
+  const delta = previous > 0 ? ((current - previous) / previous) * 100 : null;
   const firstName = session.data?.fullName?.split(' ')[0];
   const hour = new Date().getHours();
   const greeting = hour < 5 ? t('Bonsoir') : hour < 18 ? t('Bonjour') : t('Bonsoir');
@@ -165,10 +191,24 @@ export default function DashboardPage() {
           icon="invoice"
           label={t('Ventes du mois')}
           value={money(data.sales.invoicedPeriod, currency)}
-          hint={t('{count} facture(s) · {amount} encaissés', {
-            count: data.sales.documentCount,
-            amount: money(data.sales.collectedPeriod, currency),
-          })}
+          hint={
+            <>
+              {delta !== null && (
+                <span
+                  className={clsx(
+                    'tabular me-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 font-semibold',
+                    delta >= 0 ? 'bg-positive-soft text-positive' : 'bg-danger-soft text-danger',
+                  )}
+                >
+                  {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(0)} %
+                </span>
+              )}
+              {t('{count} facture(s) · {amount} encaissés', {
+                count: data.sales.documentCount,
+                amount: money(data.sales.collectedPeriod, currency),
+              })}
+            </>
+          }
           href="/documents?type=SALES_INVOICE"
         />
         <StatCard
@@ -197,7 +237,7 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader
             title={t('Ventes sur 30 jours')}
-            description={t('Total HT facturé par jour')}
+            description={t('Total HT facturé et encaissements par jour')}
             actions={
               hasSales && (
                 <div className="text-end">
@@ -208,30 +248,21 @@ export default function DashboardPage() {
             }
           />
           {hasSales ? (
-            <div className="px-5 pb-4 pt-5">
-              <div className="flex h-44 items-end gap-1 border-b border-border">
-                {data.salesTrend.map((point) => {
-                  const value = Number(point.total);
-                  return (
-                    <div key={point.date} className="group relative flex h-full flex-1 items-end">
-                      <div
-                        className={clsx(
-                          'w-full rounded-t-md transition-colors',
-                          value > 0 ? 'bg-brand/70 group-hover:bg-brand' : 'bg-border/70',
-                        )}
-                        style={{ height: `${value > 0 ? Math.max((value / trendMax) * 100, 4) : 2}%` }}
-                      />
-                      <div className="pointer-events-none absolute bottom-full start-1/2 z-10 mb-2 hidden -translate-x-1/2 whitespace rtl:translate-x-1/2-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs text-canvas shadow-(--shadow-pop) group-hover:block">
-                        <p className="text-canvas/70">{date(point.date)}</p>
-                        <p className="tabular font-semibold">{money(point.total, currency)}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-2 flex justify-between text-xs text-ink-subtle">
-                <span>{date(data.salesTrend[0]?.date)}</span>
-                <span>{date(data.salesTrend.at(-1)?.date)}</span>
+            <div className="px-3 pb-4 pt-5 sm:px-5">
+              <SalesTrendChart
+                data={trendData}
+                invoicedLabel={t('Facturé')}
+                collectedLabel={t('Encaissé')}
+                formatDay={date}
+                format={fmt}
+              />
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-ink-muted">
+                <span className="flex items-center gap-2">
+                  <span className="h-0.5 w-4 rounded bg-(--series-1)" /> {t('Facturé')}
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="h-0.5 w-4 rounded bg-(--series-3)" /> {t('Encaissé')} · {money(String(collectedSum), currency)}
+                </span>
               </div>
             </div>
           ) : (
@@ -276,6 +307,78 @@ export default function DashboardPage() {
                 tone="danger"
               />
             </ul>
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader title={t('Ventes sur 6 mois')} description={t('Total HT facturé par mois')} />
+          {hasMonthly ? (
+            <div className="px-3 pb-4 pt-5 sm:px-5">
+              <MonthlyChart
+                data={data.monthlyTrend.map((row) => ({ month: row.month, total: Number(row.total) }))}
+                label={t('Facturé')}
+                formatMonth={formatMonth}
+                format={fmt}
+              />
+            </div>
+          ) : (
+            <EmptyState icon="trending" title={t('Pas encore de ventes')} description={t('L’historique mensuel apparaîtra ici.')} />
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader
+            title={t('Créances par ancienneté')}
+            description={t('Factures impayées selon leur retard')}
+            actions={
+              <Link href="/receivables" className="text-sm font-medium text-brand hover:underline">
+                {t('Tout voir')}
+              </Link>
+            }
+          />
+          {hasAging ? (
+            <div className="px-3 pb-4 pt-5 sm:px-5">
+              <AgingChart data={agingData} label={t('Montant dû')} format={fmt} />
+            </div>
+          ) : (
+            <EmptyState icon="check" title={t('Aucune créance ouverte')} description={t('Toutes les factures sont réglées.')} />
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader title={t('Meilleurs clients du mois')} description={t('Classés par total HT facturé')} />
+          {data.topClients.length === 0 ? (
+            <EmptyState icon="users" title={t('Pas encore de clients facturés')} description={t('Le classement apparaît dès la première facture.')} />
+          ) : (
+            <RankBars
+              rows={data.topClients.map((client) => ({
+                key: client.contactId,
+                name: client.contactName,
+                value: Number(client.total),
+                display: money(client.total, currency),
+              }))}
+            />
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader title={t('Meilleurs produits du mois')} description={t('Classés par total HT vendu')} />
+          {data.topProducts.length === 0 ? (
+            <EmptyState icon="box" title={t('Pas encore de ventes')} description={t('Les articles les plus vendus apparaîtront ici.')} />
+          ) : (
+            <RankBars
+              rows={data.topProducts.map((product, index) => ({
+                key: `${product.sku ?? product.description}-${index}`,
+                name: product.description,
+                sub: `× ${qty(product.quantity)}`,
+                value: Number(product.total),
+                display: money(product.total, currency),
+              }))}
+            />
           )}
         </Card>
       </div>
@@ -377,27 +480,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {data.topClients.length > 0 && (
-        <Card className="mt-4">
-          <CardHeader title={t('Meilleurs clients du mois')} description={t('Classés par total HT facturé')} />
-          <ul className="divide-y divide-border/70">
-            {data.topClients.map((client, index) => (
-              <li key={client.contactId}>
-                <Link
-                  href={`/contacts/${client.contactId}`}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-surface-muted/60"
-                >
-                  <span className="tabular flex size-7 items-center justify-center rounded-full bg-surface-muted text-xs font-semibold text-ink-muted">
-                    {index + 1}
-                  </span>
-                  <span className="flex-1 truncate text-sm font-medium">{client.contactName}</span>
-                  <span className="tabular text-sm font-medium">{money(client.total, currency)}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
     </>
   );
 }

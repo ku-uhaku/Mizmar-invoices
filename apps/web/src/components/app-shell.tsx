@@ -49,19 +49,43 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
       { href: '/documents?type=PURCHASE_ORDER', label: 'Commandes fournisseur', icon: 'cart', type: 'PURCHASE_ORDER' },
       { href: '/documents?type=GOODS_RECEIPT', label: 'Bons de réception', icon: 'download', type: 'GOODS_RECEIPT' },
       { href: '/documents?type=PURCHASE_INVOICE', label: "Factures d'achat", icon: 'invoice', type: 'PURCHASE_INVOICE' },
+      { href: '/payables', label: 'Dettes fournisseurs', icon: 'clock' },
       { href: '/expenses', label: 'Dépenses et factures', icon: 'wallet' },
     ],
   },
   {
-    group: 'Données',
+    group: 'Stock',
     items: [
       { href: '/stock', label: 'Stock', icon: 'box' },
       { href: '/stock/warehouses', label: 'Entrepôts', icon: 'warehouse' },
       { href: '/stock/transfers', label: 'Transferts', icon: 'truck' },
       { href: '/stock/counts', label: 'Inventaires', icon: 'order' },
+      { href: '/stock/lots', label: 'Lots et péremptions', icon: 'clock' },
+    ],
+  },
+  {
+    group: 'Données',
+    items: [
       { href: '/catalog', label: 'Catalogue', icon: 'tag' },
+      { href: '/catalog/labels', label: 'Étiquettes code-barres', icon: 'printer' },
       { href: '/contacts', label: 'Clients & fournisseurs', icon: 'users' },
+    ],
+  },
+  {
+    group: 'Trésorerie',
+    items: [
       { href: '/payments', label: 'Paiements', icon: 'credit' },
+      { href: '/cheques', label: 'Suivi des chèques', icon: 'check' },
+      { href: '/bank', label: 'Rapprochement bancaire', icon: 'wallet' },
+    ],
+  },
+  {
+    group: 'Comptabilité',
+    items: [
+      { href: '/accounting/trial-balance', label: 'Balance générale', icon: 'layout' },
+      { href: '/accounting/journal', label: 'Journal', icon: 'file' },
+      { href: '/accounting/ledger', label: 'Grand livre', icon: 'order' },
+      { href: '/accounting/accounts', label: 'Plan comptable', icon: 'tag' },
     ],
   },
   {
@@ -86,7 +110,22 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
   },
   {
     group: 'Paramètres',
-    items: [{ href: '/settings', label: 'Paramètres', icon: 'layout' }],
+    items: [
+      { href: '/settings/company', label: 'Société', icon: 'layout' },
+      { href: '/settings/vat-rates', label: 'TVA', icon: 'invoice' },
+      { href: '/settings/payment-methods', label: 'Modes de paiement', icon: 'credit' },
+      { href: '/settings/expense-categories', label: 'Catégories de dépenses', icon: 'tag' },
+      { href: '/settings/pos', label: 'Caisse', icon: 'wallet' },
+      { href: '/settings/hr', label: 'Paramètres RH', icon: 'users' },
+      { href: '/settings/payroll', label: 'Taux de paie', icon: 'wallet' },
+      { href: '/settings/price-lists', label: 'Listes de prix', icon: 'tag' },
+      { href: '/settings/exchange-rates', label: 'Taux de change', icon: 'trending' },
+      { href: '/settings/numbering', label: 'Numérotation', icon: 'order' },
+      { href: '/settings/members', label: 'Membres', icon: 'users' },
+      { href: '/settings/templates', label: 'Modèles de document', icon: 'file' },
+      { href: '/settings/audit-log', label: 'Journal d’activité', icon: 'clock' },
+      { href: '/settings/language', label: 'Langue & apparence', icon: 'sun' },
+    ],
   },
 ];
 
@@ -97,6 +136,28 @@ const CREATE: Array<{ type: string; label: string; icon: IconName }> = [
   { type: 'DELIVERY_NOTE', label: 'Bon de livraison', icon: 'truck' },
   { type: 'PURCHASE_ORDER', label: 'Commande fournisseur', icon: 'cart' },
 ];
+
+/** An entry matches the current URL; several can match, the longest wins. */
+function matchLength(item: NavItem, pathname: string, type: string | null): number {
+  const base = item.href.split('?')[0]!;
+  if (item.type) return pathname === base && item.type === type ? base.length + 1000 : -1;
+  return pathname === base || pathname.startsWith(`${base}/`) ? base.length : -1;
+}
+
+function activeHref(items: NavItem[], pathname: string, type: string | null): string | null {
+  let best: string | null = null;
+  let bestLength = -1;
+  for (const item of items) {
+    const length = matchLength(item, pathname, type);
+    if (length > bestLength) {
+      best = item.href;
+      bestLength = length;
+    }
+  }
+  return best;
+}
+
+const COLLAPSED_KEY = 'nav-collapsed';
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -139,6 +200,39 @@ function Shell({ children }: { children: ReactNode }) {
   });
 
   const pos = usePosSettings();
+
+  const sections = useMemo(
+    () => NAV.map((section) => ({ ...section, items: section.items.filter((item) => pos.enabled || !item.pos) })),
+    [pos.enabled],
+  );
+  const current = activeHref(
+    sections.flatMap((section) => section.items),
+    pathname,
+    searchParams.get('type'),
+  );
+
+  // Groups the user folded by hand; the group holding the current page always shows.
+  const [collapsed, setCollapsed] = useState<string[]>(['Paramètres']);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(COLLAPSED_KEY);
+      if (saved) setCollapsed(JSON.parse(saved) as string[]);
+    } catch {
+      // Storage can be blocked; the default folding applies.
+    }
+  }, []);
+  function toggleGroup(group: string) {
+    setCollapsed((list) => {
+      const next = list.includes(group) ? list.filter((entry) => entry !== group) : [...list, group];
+      try {
+        localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+      } catch {
+        // Not persisting is acceptable.
+      }
+      return next;
+    });
+  }
+
   const companies = session.data?.companies ?? [];
   const active = companies.find((company) => company.id === companyId) ?? companies[0];
 
@@ -196,47 +290,57 @@ function Shell({ children }: { children: ReactNode }) {
           )}
         </div>
 
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4 pt-2" aria-label={t('Navigation principale')}>
-          {NAV.map((section) => ({ ...section, items: section.items.filter((item) => pos.enabled || !item.pos) })).map((section) => (
-            <div key={section.group}>
-              <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-side-muted/80">
-                {t(section.group)}
-              </p>
-              <ul className="space-y-0.5">
-                {section.items.map((item) => {
-                  const base = item.href.split('?')[0]!;
-                  // Several entries share /documents and differ only by type,
-                  // so the query has to participate in the active check.
-                  const isActive = item.type
-                    ? pathname === base && item.type === searchParams.get('type')
-                    : base === '/stock'
-                      ? pathname === base
-                      : pathname === base || pathname.startsWith(`${base}/`);
-
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        aria-current={isActive ? 'page' : undefined}
-                        className={clsx(
-                          'relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors',
-                          isActive
-                            ? 'bg-brand/15 font-medium text-white'
-                            : 'text-side-muted hover:bg-side-raised hover:text-side-ink',
-                        )}
-                      >
-                        {isActive && (
-                          <span className="absolute inset-y-2 start-0 w-0.5 rounded-full bg-brand" />
-                        )}
-                        <Icon name={item.icon} className={clsx('size-[18px]', isActive && 'text-brand')} />
-                        <span className="truncate">{t(item.label)}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
+        <nav className="side-scroll flex-1 space-y-3 overflow-y-auto px-3 pb-4 pt-2" aria-label={t('Navigation principale')}>
+          {sections.map((section) => {
+            const holdsCurrent = section.items.some((item) => item.href === current);
+            const open = holdsCurrent || !collapsed.includes(section.group);
+            const single = section.items.length === 1;
+            return (
+              <div key={section.group}>
+                {!single && (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(section.group)}
+                    aria-expanded={open}
+                    className="group/head flex w-full items-center justify-between rounded-md px-3 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-side-muted/80 transition-colors hover:text-side-ink"
+                  >
+                    <span>{t(section.group)}</span>
+                    <Icon
+                      name="chevronDown"
+                      className={clsx('size-3.5 transition-transform', !open && '-rotate-90 rtl:rotate-90')}
+                    />
+                  </button>
+                )}
+                {(open || single) && (
+                  <ul className="space-y-0.5">
+                    {section.items.map((item) => {
+                      const isActive = item.href === current;
+                      return (
+                        <li key={item.href}>
+                          <Link
+                            href={item.href}
+                            aria-current={isActive ? 'page' : undefined}
+                            className={clsx(
+                              'relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors',
+                              isActive
+                                ? 'bg-brand/15 font-medium text-white'
+                                : 'text-side-muted hover:bg-side-raised hover:text-side-ink',
+                            )}
+                          >
+                            {isActive && (
+                              <span className="absolute inset-y-2 start-0 w-0.5 rounded-full bg-brand" />
+                            )}
+                            <Icon name={item.icon} className={clsx('size-[18px]', isActive && 'text-brand')} />
+                            <span className="truncate">{t(item.label)}</span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="border-t border-side-border p-3">

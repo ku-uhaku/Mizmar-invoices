@@ -221,6 +221,7 @@ export class ReportsService {
           companyId: ctx.companyId,
           contactId: contact.id,
           direction: customer ? 'INBOUND' : 'OUTBOUND',
+          status: { notIn: ['BOUNCED', 'CANCELLED'] },
           paidAt: { lte: to },
         },
         select: { reference: true, method: true, amount: true, paidAt: true },

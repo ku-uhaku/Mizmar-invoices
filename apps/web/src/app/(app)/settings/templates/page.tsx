@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
-import type { TemplateConfigBody } from '@mizmar/contracts';
+import { TEMPLATE_PRESETS, type TemplateConfigBody, type TemplatePreset } from '@mizmar/contracts';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
 import {
@@ -108,6 +108,36 @@ export default function TemplatesPage() {
       setError(cause instanceof ApiError ? cause.message : 'Enregistrement impossible'),
   });
 
+  /**
+   * Apply a starting design. The look changes; the company's own assets,
+   * locale/format options and written texts stay, so picking a design never
+   * wipes the logo or the legal mentions.
+   */
+  const applyPreset = (preset: TemplatePreset) =>
+    setConfig((current) => {
+      if (!current) return current;
+      const next = preset.config;
+      return {
+        ...next,
+        branding: {
+          ...next.branding,
+          logoAssetId: current.branding.logoAssetId,
+          stampAssetId: current.branding.stampAssetId,
+          signatureAssetId: current.branding.signatureAssetId,
+          showStamp: current.branding.showStamp,
+          showSignature: current.branding.showSignature,
+        },
+        localeOptions: current.localeOptions,
+        content: {
+          ...next.content,
+          footerText: current.content.footerText,
+          legalMentions: current.content.legalMentions,
+          paymentInstructions: current.content.paymentInstructions,
+          termsAndConditions: current.content.termsAndConditions,
+        },
+      };
+    });
+
   const patch = useMemo(
     () =>
       <K extends keyof TemplateConfigBody>(key: K, value: Partial<TemplateConfigBody[K]>) =>
@@ -183,6 +213,31 @@ export default function TemplatesPage() {
 
       <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
         <div className={clsx('min-w-0 space-y-4', mobileTab === 'preview' && 'hidden xl:block')}>
+          <Card>
+            <CardHeader
+              title="Designs de départ"
+              description="Choisissez une base, puis personnalisez-la ci-dessous"
+            />
+            <div className="grid grid-cols-2 gap-3 p-5">
+              {TEMPLATE_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className="rounded-lg border border-border p-3 text-left transition hover:border-ink-subtle focus-visible:outline-2"
+                >
+                  <div className="mb-2 flex h-9 overflow-hidden rounded border border-border">
+                    {preset.swatch.map((color) => (
+                      <span key={color} className="flex-1" style={{ background: color }} />
+                    ))}
+                  </div>
+                  <div className="text-sm font-semibold">{preset.name}</div>
+                  <div className="text-xs text-ink-subtle">{preset.description}</div>
+                </button>
+              ))}
+            </div>
+          </Card>
+
           <Card>
             <CardHeader title="Modèle" description="Nom et documents concernés" />
             <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-1">

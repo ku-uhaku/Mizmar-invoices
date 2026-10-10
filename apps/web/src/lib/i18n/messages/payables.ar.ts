@@ -1,0 +1,20 @@
+/** Supplier payables. French source text to Arabic. */
+export const AR_PAYABLES: Record<string, string> = {
+  'Dettes fournisseurs': 'ديون الموردين',
+  'Factures d’achat et dépenses à payer, par échéance': 'فواتير الشراء والمصاريف المستحقة الأداء، حسب تاريخ الاستحقاق',
+  'Total à payer': 'المجموع المستحق',
+  'En retard': 'متأخر',
+  'À payer sous 7 jours': 'مستحق خلال 7 أيام',
+  '{n} facture(s)': '{n} فاتورة',
+  'Factures à payer': 'فواتير للأداء',
+  'Rien à payer': 'لا شيء للأداء',
+  'Les factures d’achat validées et les dépenses impayées apparaîtront ici.': 'ستظهر هنا فواتير الشراء المصادق عليها والمصاريف غير المؤداة.',
+  '{n} j de retard': 'متأخر {n} يوم',
+  Fournisseur: 'المورد',
+  'Facture d’achat': 'فاتورة شراء',
+  Dépense: 'مصروف',
+  Payer: 'أداء',
+  Ouvrir: 'فتح',
+  'Payer le fournisseur': 'أداء المورد',
+  'Réparti sur les factures, de la plus ancienne échéance à la plus récente': 'يوزع على الفواتير، من أقدم استحقاق إلى أحدثه',
+};

@@ -1248,7 +1248,13 @@ export class DocumentsService {
   async refreshSettlement(tx: PrismaTx, documentId: string): Promise<void> {
     const document = await tx.document.findUniqueOrThrow({
       where: { id: documentId },
-      include: { allocations: { select: { amount: true } } },
+      // A bounced or cancelled payment no longer settles anything.
+      include: {
+        allocations: {
+          where: { payment: { status: { notIn: ['BOUNCED', 'CANCELLED'] } } },
+          select: { amount: true },
+        },
+      },
     });
 
     const paid = document.allocations.reduce(

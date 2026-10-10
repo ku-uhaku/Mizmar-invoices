@@ -404,7 +404,12 @@ export const totalsPreviewResponse = totalsSchema.extend({
 export const paymentCreate = z.object({
   contactId: uuid,
   method: z.enum(['CASH', 'BANK_TRANSFER', 'CHEQUE', 'BILL_OF_EXCHANGE', 'CARD', 'OTHER']),
+  /** Configured method; when set the server derives `method` from it. */
+  methodId: uuid.nullish(),
   reference: z.string().max(100).optional(),
+  bankName: z.string().max(100).nullish(),
+  /** Cheque / bill due date (échéance). */
+  dueDate: isoDate.nullish(),
   amount: decimalInput,
   currency: currencyCode.optional(),
   exchangeRate: decimalInput.optional(),
@@ -426,6 +431,9 @@ export const paymentCreate = z.object({
  */
 export const paymentUpdate = z.object({
   method: paymentCreate.shape.method.optional(),
+  methodId: uuid.nullish(),
+  bankName: z.string().max(100).nullish(),
+  dueDate: isoDate.nullish(),
   reference: z.string().max(100).nullish(),
   amount: decimalInput.optional(),
   paidAt: isoDate.optional(),
@@ -443,6 +451,11 @@ export const payment = z.object({
   contactName: z.string(),
   direction: z.enum(['INBOUND', 'OUTBOUND']),
   method: z.string(),
+  methodId: uuid.nullable(),
+  methodName: z.string().nullable(),
+  status: z.enum(['PENDING', 'DEPOSITED', 'CLEARED', 'BOUNCED', 'CANCELLED']),
+  bankName: z.string().nullable(),
+  dueDate: isoDate.nullable(),
   reference: z.string().nullable(),
   amount: decimalString,
   currency: z.string(),

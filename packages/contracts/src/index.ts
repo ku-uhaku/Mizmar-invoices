@@ -1,6 +1,7 @@
 export * from './common';
 export * from './contract';
 export * from './contract-modules';
+export * from './template-presets';
 
 export * as auditSchemas from './audit';
 export * as authSchemas from './auth';
@@ -15,6 +16,11 @@ export * as payrollSchemas from './payroll';
 export * as importSchemas from './imports';
 export * as inventorySchemas from './inventory';
 export * as receivablesSchemas from './receivables';
+export * as treasurySchemas from './treasury';
+export * as payablesSchemas from './payables';
+export * as bankSchemas from './bank';
+export * as accountingSchemas from './accounting';
+export * as lotSchemas from './lots';
 export * as reportSchemas from './reports';
 export * as pricingSchemas from './pricing';
 export * as recurringSchemas from './recurring';

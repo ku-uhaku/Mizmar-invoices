@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { api, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
-import { StockTabs } from '@/components/stock-tabs';
 import { AdjustDialog } from '@/components/dialogs/adjust-dialog';
 import {
   Badge,
@@ -105,7 +104,6 @@ function StockScreen() {
           </Button>
         }
       />
-      <StockTabs />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Segmented

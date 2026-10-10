@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
-import { COUNT_STATUS, StockTabs } from '@/components/stock-tabs';
+import { COUNT_STATUS } from '@/components/count-status';
 import {
   Badge,
   Button,
@@ -47,7 +47,6 @@ export default function CountsPage() {
           </Button>
         }
       />
-      <StockTabs />
 
       <Card className="overflow-hidden">
         {sessions.isPending ? (

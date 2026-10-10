@@ -9,6 +9,7 @@ import { moneyOut, toPrismaDecimal } from '../common/util/decimal';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestContext } from '../tenancy/request-context';
 import { DocumentsService } from '../documents/documents.service';
+import { PaymentMethodsService } from './payment-methods.service';
 
 type Payment = z.infer<typeof documentSchemas.payment>;
 type PaymentCreate = z.infer<typeof documentSchemas.paymentCreate>;
@@ -19,6 +20,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly documents: DocumentsService,
+    private readonly methods: PaymentMethodsService,
   ) {}
 
   async list(
@@ -208,13 +210,30 @@ export class PaymentsService {
       );
     }
 
+    // A configured method decides the behaviour; the raw kind is the fallback.
+    const configured = body.methodId ? await this.methods.resolve(ctx.organizationId, body.methodId) : null;
+    const method = configured?.kind ?? body.method;
+    const deferred = configured ? configured.deferred : method === 'CHEQUE' || method === 'BILL_OF_EXCHANGE';
+    if (configured?.requiresReference && !body.reference?.trim()) {
+      throw AppError.badRequest('REFERENCE_REQUIRED', `${configured.name} needs a reference number`);
+    }
+    // Deferred instruments wait to clear; everything else is money in hand.
+    const status = deferred && !body.clearedAt ? 'PENDING' : 'CLEARED';
+
     const id = await this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.create({
         data: {
           companyId: ctx.companyId,
           contactId: body.contactId,
           direction,
-          method: body.method,
+          method,
+          methodId: configured?.id ?? null,
+          status,
+          bankName: body.bankName ?? null,
+          dueDate: body.dueDate ? new Date(body.dueDate) : null,
+          statusEvents: {
+            create: { status, at: new Date(body.paidAt), userId: ctx.userId, note: null },
+          },
           reference: body.reference ?? null,
           amount: toPrismaDecimal(amount),
           currency: body.currency ?? documents[0]!.currency,
@@ -379,12 +398,20 @@ export class PaymentsService {
       throw AppError.unprocessable('NOTHING_TO_ALLOCATE', 'The payment must settle at least one document');
     }
 
+    const configured = body.methodId ? await this.methods.resolve(ctx.organizationId, body.methodId) : null;
+
     await this.prisma.$transaction(async (tx) => {
       await tx.paymentAllocation.deleteMany({ where: { paymentId: id } });
       await tx.payment.update({
         where: { id },
         data: {
-          ...(body.method !== undefined ? { method: body.method } : {}),
+          ...(configured
+            ? { method: configured.kind, methodId: configured.id }
+            : body.method !== undefined
+              ? { method: body.method }
+              : {}),
+          ...(body.bankName !== undefined ? { bankName: body.bankName || null } : {}),
+          ...(body.dueDate !== undefined ? { dueDate: body.dueDate ? new Date(body.dueDate) : null } : {}),
           ...(body.reference !== undefined ? { reference: body.reference || null } : {}),
           ...(body.note !== undefined ? { note: body.note || null } : {}),
           ...(body.paidAt !== undefined ? { paidAt: new Date(body.paidAt) } : {}),
@@ -453,14 +480,15 @@ function minOf(a: ReturnType<typeof dec>, b: ReturnType<typeof dec>): ReturnType
   return a.lte(b) ? a : b;
 }
 
-const paymentInclude = {
+export const paymentInclude = {
   contact: { select: { displayName: true } },
+  methodConfig: { select: { name: true } },
   allocations: {
     include: { document: { select: { number: true, type: true } } },
   },
 } satisfies Prisma.PaymentInclude;
 
-function mapPayment(
+export function mapPayment(
   row: Prisma.PaymentGetPayload<{ include: typeof paymentInclude }>,
 ): Payment {
   return {
@@ -469,6 +497,11 @@ function mapPayment(
     contactName: row.contact.displayName,
     direction: row.direction,
     method: row.method,
+    methodId: row.methodId,
+    methodName: row.methodConfig?.name ?? null,
+    status: row.status,
+    bankName: row.bankName,
+    dueDate: row.dueDate?.toISOString().slice(0, 10) ?? null,
     reference: row.reference,
     amount: moneyOut(row.amount),
     currency: row.currency,

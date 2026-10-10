@@ -336,6 +336,7 @@ export class InventoryService {
         reason: body.reason,
         unitCost: line.unitCost ?? null,
         note: body.note ?? null,
+        lot: line.lotNumber ? { lotNumber: line.lotNumber, expiryDate: line.expiryDate ?? null } : null,
       }));
 
     if (inputs.length === 0) {

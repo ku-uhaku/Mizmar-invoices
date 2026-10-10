@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
-import { StockTabs } from '@/components/stock-tabs';
 import {
   Badge,
   Button,
@@ -70,7 +69,6 @@ export default function WarehousesPage() {
           </Button>
         }
       />
-      <StockTabs />
 
       <Card className="overflow-hidden">
         {warehouses.isPending ? (

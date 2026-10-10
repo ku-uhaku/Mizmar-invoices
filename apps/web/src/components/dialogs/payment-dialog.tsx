@@ -5,18 +5,15 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { useT } from '@/lib/i18n/provider';
-import { money, paymentMethodLabel } from '@/lib/format';
-import { Button, Dialog, ErrorNote, Field, Input, NumberInput, Select, toast } from '../ui';
-
-// Labels come from paymentMethodLabel so they follow the UI language.
-const METHODS = [
-  ['BANK_TRANSFER'],
-  ['CHEQUE'],
-  ['CASH'],
-  ['BILL_OF_EXCHANGE'],
-  ['CARD'],
-  ['OTHER'],
-] as const;
+import { money } from '@/lib/format';
+import { usePaymentMethods } from '@/lib/use-payment-methods';
+import { Button, Dialog, ErrorNote, Field, Input, NumberInput, toast } from '../ui';
+import {
+  EMPTY_METHOD_FIELDS,
+  PaymentMethodFields,
+  methodFieldsMissing,
+  type MethodFieldsValue,
+} from '../payment-method-fields';
 
 export function PaymentDialog({
   documentId,
@@ -38,8 +35,8 @@ export function PaymentDialog({
   const queryClient = useQueryClient();
   // Defaults to settling the balance in full, which is the common case.
   const [amountValue, setAmountValue] = useState(outstanding);
-  const [method, setMethod] = useState<(typeof METHODS)[number][0]>('BANK_TRANSFER');
-  const [reference, setReference] = useState('');
+  const methods = usePaymentMethods();
+  const [fields, setFields] = useState<MethodFieldsValue>(EMPTY_METHOD_FIELDS);
   const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -47,12 +44,16 @@ export function PaymentDialog({
   const record = useMutation({
     mutationFn: async () => {
       setError(null);
+      const picked = methods.data?.find((entry) => entry.id === fields.methodId);
       return unwrap(
         await api.payments.create({
           body: {
             contactId,
-            method,
-            reference: reference || undefined,
+            method: picked?.kind ?? 'OTHER',
+            methodId: fields.methodId || undefined,
+            reference: fields.reference || undefined,
+            bankName: fields.bankName || undefined,
+            dueDate: fields.dueDate || undefined,
             amount: amountValue,
             paidAt,
             note: note || undefined,
@@ -88,7 +89,7 @@ export function PaymentDialog({
           <Button
             variant="primary"
             loading={record.isPending}
-            disabled={Number(amountValue) <= 0 || over}
+            disabled={Number(amountValue) <= 0 || over || methodFieldsMissing(methods.data, fields)}
             onClick={() => record.mutate()}
           >
             {t('Enregistrer le règlement')}
@@ -114,28 +115,11 @@ export function PaymentDialog({
           />
         </Field>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t('Moyen de paiement')}>
-            <Select
-              value={method}
-              onChange={(event) => setMethod(event.target.value as typeof method)}
-            >
-              {METHODS.map(([value]) => (
-                <option key={value} value={value}>
-                  {paymentMethodLabel(value)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field label={t('Date du règlement')}>
-            <Input type="date" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />
-          </Field>
-        </div>
-
-        <Field label={t('Référence')} hint={t('N° de chèque, de virement…')}>
-          <Input value={reference} onChange={(event) => setReference(event.target.value)} />
+        <Field label={t('Date du règlement')}>
+          <Input type="date" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />
         </Field>
+
+        <PaymentMethodFields value={fields} onChange={setFields} />
 
         <Field label={t('Note')}>
           <Input value={note} onChange={(event) => setNote(event.target.value)} />

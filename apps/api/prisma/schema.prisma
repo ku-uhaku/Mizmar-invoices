@@ -111,8 +111,27 @@ enum PaymentMethod {
   OTHER
 }
 
+/// Where a payment stands. Cash and transfers are CLEARED at once; cheques and
+/// bills of exchange travel PENDING -> DEPOSITED -> CLEARED (or BOUNCED).
+/// BOUNCED and CANCELLED payments no longer settle their documents.
+enum PaymentStatus {
+  PENDING
+  DEPOSITED
+  CLEARED
+  BOUNCED
+  CANCELLED
+}
+
 /// Why a stock ledger row exists. Document-driven rows carry a document link;
 /// the rest carry a reason and a note.
+/// How a variant's stock is traced. LOT keeps batches with an expiry date;
+/// SERIAL keeps one row per unit.
+enum TrackingMode {
+  NONE
+  LOT
+  SERIAL
+}
+
 enum MovementType {
   OPENING_BALANCE
   SALE
@@ -218,6 +237,7 @@ model Organization {
   units             Unit[]
   assets            Asset[]
   expenseCategories ExpenseCategory[]
+  paymentMethods    PaymentMethodConfig[]
   auditLogs         AuditLog[]
   countSessions     StockCountSession[]
   transfers         StockTransfer[]
@@ -293,6 +313,9 @@ model Company {
   companyAccess     CompanyAccess[]
   documents         Document[]
   payments          Payment[]
+  bankAccounts      BankAccount[]
+  accounts          Account[]
+  journalEntries    JournalEntry[]
   numberSequences   NumberSequence[]
   templateConfigs   TemplateConfig[]
   vatRates          VatRate[]
@@ -660,6 +683,7 @@ model ProductVariant {
 
   sku          String
   barcode      String?
+  tracking     TrackingMode @default(NONE)
   /// Cached "Red / L" label so lists and PDFs do not have to join attributes.
   variantLabel String?
 
@@ -686,6 +710,7 @@ model ProductVariant {
   priceListItems  PriceListItem[]
   countLines      StockCountLine[]
   transferLines   StockTransferLine[]
+  lots            StockLot[]
 
   @@unique([productId, sku])
   @@index([sku])
@@ -756,6 +781,7 @@ model Warehouse {
   createdAt DateTime @default(now())
 
   stockLevels         StockLevel[]
+  lots                StockLot[]
   movements           StockMovement[]
   reservations        StockReservation[]
   documents           Document[]
@@ -830,10 +856,11 @@ model StockMovement {
   /// The compensating row this one reverses, when cancelling a document.
   reversesMovementId String? @db.Uuid
 
-  note      String?
-  userId    String?  @db.Uuid
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
+  note         String?
+  userId       String?            @db.Uuid
+  user         User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt    DateTime           @default(now())
+  lotMovements StockLotMovement[]
 
   @@index([variantId, warehouseId, createdAt])
   @@index([documentId])
@@ -1181,6 +1208,16 @@ model Payment {
   method    PaymentMethod    @default(BANK_TRANSFER)
   reference String?
 
+  /// The configurable method picked by the user; `method` stays as its behaviour kind.
+  methodId     String?              @db.Uuid
+  methodConfig PaymentMethodConfig? @relation(fields: [methodId], references: [id], onDelete: SetNull)
+  /// Cheque / bill of exchange follow-up.
+  bankName     String?
+  /// Date a deferred instrument can be cashed (échéance).
+  dueDate      DateTime?            @db.Date
+  status       PaymentStatus        @default(CLEARED)
+  statusEvents PaymentStatusEvent[]
+
   amount       Decimal   @db.Decimal(18, 2)
   currency     String    @default("MAD")
   exchangeRate Decimal   @default(1) @db.Decimal(18, 8)
@@ -1199,11 +1236,47 @@ model Payment {
   cashSession   CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
 
   allocations PaymentAllocation[]
+  bankLine    BankStatementLine?
 
   @@index([cashSessionId])
   @@index([companyId, paidAt])
+  @@index([companyId, status, dueDate])
   @@index([contactId])
   @@map("payments")
+}
+
+/// A payment method the organization offers. `kind` drives behaviour (is it
+/// cash? does it clear later?), the name is whatever the user wants to see.
+model PaymentMethodConfig {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  organizationId    String        @db.Uuid
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  kind              PaymentMethod @default(OTHER)
+  requiresReference Boolean       @default(false)
+  /// Cleared later than recorded: gets cheque-style status tracking.
+  deferred          Boolean       @default(false)
+  isActive          Boolean       @default(true)
+  sortOrder         Int           @default(0)
+  createdAt         DateTime      @default(now())
+
+  payments Payment[]
+
+  @@unique([organizationId, name])
+  @@map("payment_methods")
+}
+
+model PaymentStatusEvent {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  paymentId String        @db.Uuid
+  payment   Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  status    PaymentStatus
+  at        DateTime      @default(now())
+  note      String?
+  userId    String?       @db.Uuid
+
+  @@index([paymentId])
+  @@map("payment_status_events")
 }
 
 model PaymentAllocation {
@@ -1526,16 +1599,17 @@ model Expense {
 }
 
 model ExpensePayment {
-  id          String        @id @default(uuid(7)) @db.Uuid
-  expenseId   String        @db.Uuid
-  expense     Expense       @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  id          String             @id @default(uuid(7)) @db.Uuid
+  expenseId   String             @db.Uuid
+  expense     Expense            @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   method      PaymentMethod
-  amount      Decimal       @db.Decimal(18, 2)
-  paidAt      DateTime      @db.Date
+  amount      Decimal            @db.Decimal(18, 2)
+  paidAt      DateTime           @db.Date
   reference   String?
   note        String?
-  createdById String        @db.Uuid
-  createdAt   DateTime      @default(now())
+  createdById String             @db.Uuid
+  createdAt   DateTime           @default(now())
+  bankLine    BankStatementLine?
 
   @@index([expenseId])
   @@index([paidAt])
@@ -1961,4 +2035,185 @@ model CashMovement {
 
   @@index([sessionId])
   @@map("cash_movements")
+}
+
+// ---------------------------------------------------------------------------
+// Bank reconciliation
+// ---------------------------------------------------------------------------
+
+enum BankLineStatus {
+  UNMATCHED
+  MATCHED
+  IGNORED
+}
+
+model BankAccount {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  companyId      String   @db.Uuid
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name           String
+  bankName       String?
+  iban           String?
+  currency       String   @default("MAD")
+  openingBalance Decimal  @default(0) @db.Decimal(18, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  lines BankStatementLine[]
+
+  @@index([companyId])
+  @@map("bank_accounts")
+}
+
+/// One row of an imported bank statement. Amount is signed: in is positive.
+model BankStatementLine {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  bankAccountId String      @db.Uuid
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  date        DateTime @db.Date
+  description String
+  reference   String?
+  amount      Decimal  @db.Decimal(18, 2)
+  balance     Decimal? @db.Decimal(18, 2)
+  /// Re-importing the same statement adds nothing.
+  fingerprint String
+
+  status BankLineStatus @default(UNMATCHED)
+
+  paymentId        String?         @unique @db.Uuid
+  payment          Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  expensePaymentId String?         @unique @db.Uuid
+  expensePayment   ExpensePayment? @relation(fields: [expensePaymentId], references: [id], onDelete: SetNull)
+  matchedAt        DateTime?
+  matchedById      String?         @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  @@unique([bankAccountId, fingerprint])
+  @@index([bankAccountId, date])
+  @@index([bankAccountId, status])
+  @@map("bank_statement_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Accounting
+// ---------------------------------------------------------------------------
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum JournalSource {
+  MANUAL
+  DOCUMENT
+  PAYMENT
+  EXPENSE
+  EXPENSE_PAYMENT
+}
+
+/// A ledger account of one company's chart. `role` marks the accounts the
+/// automatic postings use (receivable, bank, VAT...) so they can be renumbered.
+model Account {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  companyId String      @db.Uuid
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code      String
+  name      String
+  type      AccountType
+  role      String?
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+
+  lines JournalLine[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, role])
+  @@map("accounts")
+}
+
+model JournalEntry {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  companyId   String        @db.Uuid
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Running number within the company; gives the journal a stable order.
+  seq         Int
+  date        DateTime      @db.Date
+  label       String
+  source      JournalSource
+  /// Idempotency: one entry per (source object, step). Reversals add ":rev".
+  sourceKey   String?
+  /// Hash of the lines the automatic posting would write now; a change means the source was edited.
+  fingerprint String?
+  createdById String?       @db.Uuid
+  createdAt   DateTime      @default(now())
+
+  lines JournalLine[]
+
+  @@unique([companyId, seq])
+  @@unique([companyId, sourceKey])
+  @@index([companyId, date])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id        String       @id @default(uuid(7)) @db.Uuid
+  entryId   String       @db.Uuid
+  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId String       @db.Uuid
+  account   Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  debit     Decimal      @default(0) @db.Decimal(18, 2)
+  credit    Decimal      @default(0) @db.Decimal(18, 2)
+  label     String?
+
+  @@index([entryId])
+  @@index([accountId])
+  @@map("journal_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Lots, expiry and serial numbers
+// ---------------------------------------------------------------------------
+
+/// A batch (or a single serial-numbered unit) held in one warehouse. The sum of
+/// a variant's lots never exceeds its on-hand; the rest is "unassigned".
+model StockLot {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  variantId   String         @db.Uuid
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouseId String         @db.Uuid
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  lotNumber  String
+  expiryDate DateTime? @db.Date
+  /// Remaining quantity in this lot.
+  quantity   Decimal   @default(0) @db.Decimal(18, 6)
+  note       String?
+  receivedAt DateTime  @default(now())
+
+  movements StockLotMovement[]
+
+  @@unique([variantId, warehouseId, lotNumber])
+  @@index([warehouseId, expiryDate])
+  @@map("stock_lots")
+}
+
+/// Which lot a stock movement drew from or added to: the recall trail.
+model StockLotMovement {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  lotId      String        @db.Uuid
+  lot        StockLot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  movementId String        @db.Uuid
+  movement   StockMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  /// Signed like the movement.
+  quantity   Decimal       @db.Decimal(18, 6)
+  createdAt  DateTime      @default(now())
+
+  @@index([lotId])
+  @@index([movementId])
+  @@map("stock_lot_movements")
 }

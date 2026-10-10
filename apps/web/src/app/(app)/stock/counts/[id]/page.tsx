@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
-import { COUNT_STATUS, StockTabs } from '@/components/stock-tabs';
+import { COUNT_STATUS } from '@/components/count-status';
 import {
   Badge,
   Button,
@@ -92,20 +92,10 @@ export default function CountDetailPage() {
   });
 
   if (session.isPending) {
-    return (
-      <>
-        <StockTabs />
-        <TableSkeleton rows={6} cols={5} />
-      </>
-    );
+    return <TableSkeleton rows={6} cols={5} />;
   }
   if (!data) {
-    return (
-      <>
-        <StockTabs />
-        <ErrorNote>{t('Inventaire introuvable')}</ErrorNote>
-      </>
-    );
+    return <ErrorNote>{t('Inventaire introuvable')}</ErrorNote>;
   }
 
   const status = COUNT_STATUS[data.status] ?? { tone: 'neutral' as const, label: data.status };
@@ -150,7 +140,6 @@ export default function CountDetailPage() {
           </>
         }
       />
-      <StockTabs />
       <div className="mb-4">
         <ErrorNote>{error}</ErrorNote>
       </div>

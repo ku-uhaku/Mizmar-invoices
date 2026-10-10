@@ -265,7 +265,7 @@ export class AnalyticsService {
     const lte = asDate(to);
     const [payments, expensePayments] = await Promise.all([
       this.prisma.payment.findMany({
-        where: { companyId: ctx.companyId, paidAt: { gte, lte } },
+        where: { companyId: ctx.companyId, status: { notIn: ['BOUNCED', 'CANCELLED'] }, paidAt: { gte, lte } },
         select: { paidAt: true, direction: true, amount: true },
       }),
       this.prisma.expensePayment.findMany({
@@ -327,7 +327,7 @@ export class AnalyticsService {
     const lte = asDate(to);
     const [payments, expensePayments] = await Promise.all([
       this.prisma.payment.findMany({
-        where: { companyId: ctx.companyId, paidAt: { gte, lte } },
+        where: { companyId: ctx.companyId, status: { notIn: ['BOUNCED', 'CANCELLED'] }, paidAt: { gte, lte } },
         select: { method: true, direction: true, amount: true },
       }),
       this.prisma.expensePayment.findMany({
@@ -840,7 +840,7 @@ export class AnalyticsService {
   private async cashUp({ ctx, q, from, to, done }: Env): Promise<TableReport> {
     const period: Period = q.period ?? 'day';
     const payments = await this.prisma.payment.findMany({
-      where: { companyId: ctx.companyId, direction: 'INBOUND', paidAt: { gte: asDate(from), lte: asDate(to) } },
+      where: { companyId: ctx.companyId, direction: 'INBOUND', status: { notIn: ['BOUNCED', 'CANCELLED'] }, paidAt: { gte: asDate(from), lte: asDate(to) } },
       select: { paidAt: true, method: true, amount: true },
     });
     const groups = new Map<string, { count: number; byMethod: Record<string, Decimal> }>();

@@ -1,18 +1,17 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { documentSchemas } from '@mizmar/contracts';
 import type { z } from 'zod';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { useT } from '@/lib/i18n/provider';
-import { money, paymentMethodLabel } from '@/lib/format';
-import { Button, Dialog, ErrorNote, Field, Input, NumberInput, Select, toast } from '../ui';
+import { money } from '@/lib/format';
+import { usePaymentMethods } from '@/lib/use-payment-methods';
+import { Button, Dialog, ErrorNote, Field, Input, NumberInput, toast } from '../ui';
+import { PaymentMethodFields, methodFieldsMissing, type MethodFieldsValue } from '../payment-method-fields';
 
 type Payment = z.infer<typeof documentSchemas.payment>;
-type Method = 'BANK_TRANSFER' | 'CHEQUE' | 'CASH' | 'BILL_OF_EXCHANGE' | 'CARD' | 'OTHER';
-
-const METHODS: Method[] = ['BANK_TRANSFER', 'CHEQUE', 'CASH', 'BILL_OF_EXCHANGE', 'CARD', 'OTHER'];
 
 /** Everything a payment change can affect: invoices, balances, reports, the till. */
 function useRefreshAfterChange() {
@@ -30,10 +29,20 @@ export function EditPaymentDialog({ payment, onClose }: { payment: Payment; onCl
   const [parts, setParts] = useState(
     Object.fromEntries(payment.allocations.map((a) => [a.documentId, a.amount])),
   );
-  const [method, setMethod] = useState<Method>(payment.method as Method);
-  const [reference, setReference] = useState(payment.reference ?? '');
+  const methods = usePaymentMethods();
+  const [fields, setFields] = useState<MethodFieldsValue>({
+    // Payments recorded before methods were configurable resolve by kind below.
+    methodId: payment.methodId ?? '',
+    reference: payment.reference ?? '',
+    bankName: payment.bankName ?? '',
+    dueDate: payment.dueDate ?? '',
+  });
+  useEffect(() => {
+    if (fields.methodId || !methods.data) return;
+    const match = methods.data.find((entry) => entry.kind === payment.method);
+    if (match) setFields((current) => ({ ...current, methodId: match.id }));
+  }, [fields.methodId, methods.data, payment.method]);
   const [paidAt, setPaidAt] = useState(payment.paidAt);
-  const [clearedAt, setClearedAt] = useState(payment.clearedAt ?? '');
   const [note, setNote] = useState(payment.note ?? '');
   const [error, setError] = useState<string | null>(null);
 
@@ -48,10 +57,11 @@ export function EditPaymentDialog({ payment, onClose }: { payment: Payment; onCl
         await api.payments.update({
           params: { id: payment.id },
           body: {
-            method,
-            reference: reference || null,
+            methodId: fields.methodId || undefined,
+            bankName: fields.bankName || null,
+            dueDate: fields.dueDate || null,
+            reference: fields.reference || null,
             paidAt,
-            clearedAt: clearedAt || null,
             note: note || null,
             amount: split ? total.toFixed(2) : amount,
             allocations: payment.allocations.map((a) => ({
@@ -86,7 +96,7 @@ export function EditPaymentDialog({ payment, onClose }: { payment: Payment; onCl
           <Button
             variant="primary"
             loading={save.isPending}
-            disabled={!(total > 0)}
+            disabled={!(total > 0) || methodFieldsMissing(methods.data, fields)}
             onClick={() => save.mutate()}
           >
             {t('Enregistrer')}
@@ -119,31 +129,12 @@ export function EditPaymentDialog({ payment, onClose }: { payment: Payment; onCl
           </Field>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t('Moyen de paiement')}>
-            <Select value={method} onChange={(event) => setMethod(event.target.value as Method)}>
-              {METHODS.map((value) => (
-                <option key={value} value={value}>
-                  {paymentMethodLabel(value)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('Date du règlement')}>
-            <Input type="date" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />
-          </Field>
-        </div>
+        <Field label={t('Date du règlement')}>
+          <Input type="date" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />
+        </Field>
 
-        <Field label={t('Référence')} hint={t('N° de chèque, de virement…')}>
-          <Input value={reference} onChange={(event) => setReference(event.target.value)} />
-        </Field>
-        <Field label={t('Date d’encaissement')}>
-          <Input
-            type="date"
-            value={clearedAt}
-            onChange={(event) => setClearedAt(event.target.value)}
-          />
-        </Field>
+        <PaymentMethodFields value={fields} onChange={setFields} />
+
         <Field label={t('Note')}>
           <Input value={note} onChange={(event) => setNote(event.target.value)} />
         </Field>

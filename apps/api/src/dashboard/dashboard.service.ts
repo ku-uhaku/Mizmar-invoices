@@ -26,6 +26,10 @@ export class DashboardService {
       ? new Date(query.from)
       : new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1));
     const todayStart = startOfDay(now);
+    const previousTo = new Date(from.getTime() - 1);
+    const previousFrom = new Date(previousTo.getTime() - (to.getTime() - from.getTime()));
+    // Five full months before the current one, plus the current month so far.
+    const monthsStart = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() - 5, 1));
 
     const company = await this.prisma.company.findUniqueOrThrow({
       where: { id: ctx.companyId },
@@ -57,6 +61,11 @@ export class DashboardService {
       recentPayments,
       recentMovements,
       stockValueRows,
+      previousSales,
+      previousCredit,
+      collectedRows,
+      monthlyRows,
+      topProductRows,
     ] = await Promise.all([
       this.prisma.document.aggregate({
         where: { ...liveSales, issueDate: { gte: todayStart, lte: to } },
@@ -82,6 +91,7 @@ export class DashboardService {
         where: {
           companyId: ctx.companyId,
           direction: 'INBOUND',
+          status: { notIn: ['BOUNCED', 'CANCELLED'] },
           paidAt: { gte: from, lte: to },
         },
         _sum: { amount: true },
@@ -201,12 +211,56 @@ export class DashboardService {
             select: { onHand: true, averageCost: true },
           })
         : Promise.resolve([]),
+      this.prisma.document.aggregate({
+        where: { ...liveSales, issueDate: { gte: previousFrom, lte: previousTo } },
+        _sum: { totalExclVat: true },
+      }),
+      this.prisma.document.aggregate({
+        where: {
+          companyId: ctx.companyId,
+          lifecycle: { in: ['VALIDATED', 'SENT'] },
+          type: 'CREDIT_NOTE',
+          issueDate: { gte: previousFrom, lte: previousTo },
+        },
+        _sum: { totalExclVat: true },
+      }),
+      this.prisma.payment.findMany({
+        where: {
+          companyId: ctx.companyId,
+          direction: 'INBOUND',
+          status: { notIn: ['BOUNCED', 'CANCELLED'] },
+          paidAt: { gte: new Date(to.getTime() - 29 * DAY_MS), lte: to },
+        },
+        select: { paidAt: true, amount: true },
+      }),
+      this.prisma.document.groupBy({
+        by: ['issueDate'],
+        where: { ...liveSales, issueDate: { gte: monthsStart, lte: to } },
+        _sum: { totalExclVat: true },
+      }),
+      this.prisma.documentLine.groupBy({
+        by: ['sku', 'description'],
+        where: {
+          isNote: false,
+          document: { ...liveSales, issueDate: { gte: from, lte: to } },
+        },
+        _sum: { quantity: true, taxableBase: true },
+        orderBy: { _sum: { taxableBase: 'desc' } },
+        take: 5,
+      }),
     ]);
 
     // ---- Receivables, with overdue computed against the clock ------------
     let outstanding = dec(0);
     let overdue = dec(0);
     let overdueCount = 0;
+    const aging = {
+      CURRENT: { amount: dec(0), count: 0 },
+      D1_30: { amount: dec(0), count: 0 },
+      D31_60: { amount: dec(0), count: 0 },
+      D61_90: { amount: dec(0), count: 0 },
+      D90_PLUS: { amount: dec(0), count: 0 },
+    };
 
     for (const row of receivables) {
       const remaining = dec(row.totalInclVat.toFixed())
@@ -220,6 +274,14 @@ export class DashboardService {
       if (row.type !== 'CREDIT_NOTE' && row.dueDate && row.dueDate < now) {
         overdue = overdue.plus(remaining);
         overdueCount += 1;
+      }
+
+      if (row.type !== 'CREDIT_NOTE') {
+        const daysLate = row.dueDate ? Math.floor((now.getTime() - row.dueDate.getTime()) / DAY_MS) : 0;
+        const bucket =
+          daysLate <= 0 ? 'CURRENT' : daysLate <= 30 ? 'D1_30' : daysLate <= 60 ? 'D31_60' : daysLate <= 90 ? 'D61_90' : 'D90_PLUS';
+        aging[bucket].amount = aging[bucket].amount.plus(remaining);
+        aging[bucket].count += 1;
       }
     }
 
@@ -247,6 +309,32 @@ export class DashboardService {
     for (let offset = 29; offset >= 0; offset -= 1) {
       const day = new Date(to.getTime() - offset * DAY_MS).toISOString().slice(0, 10);
       salesTrend.push({ date: day, total: moneyOut(trendByDay.get(day) ?? 0) });
+    }
+
+    const collectedByDay = new Map<string, ReturnType<typeof dec>>();
+    for (const row of collectedRows) {
+      const day = row.paidAt.toISOString().slice(0, 10);
+      collectedByDay.set(day, (collectedByDay.get(day) ?? dec(0)).plus(dec(row.amount.toFixed())));
+    }
+    const collectedTrend = salesTrend.map((point) => ({
+      date: point.date,
+      total: moneyOut(collectedByDay.get(point.date) ?? 0),
+    }));
+
+    const monthTotals = new Map<string, ReturnType<typeof dec>>();
+    for (const row of monthlyRows) {
+      const month = row.issueDate.toISOString().slice(0, 7);
+      monthTotals.set(
+        month,
+        (monthTotals.get(month) ?? dec(0)).plus(dec((row._sum?.totalExclVat ?? 0).toString())),
+      );
+    }
+    const monthlyTrend: Array<{ month: string; total: string }> = [];
+    for (let offset = 5; offset >= 0; offset -= 1) {
+      const month = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() - offset, 1))
+        .toISOString()
+        .slice(0, 7);
+      monthlyTrend.push({ month, total: moneyOut(monthTotals.get(month) ?? 0) });
     }
 
     // ---- Top clients -----------------------------------------------------
@@ -306,6 +394,11 @@ export class DashboardService {
             dec((creditPeriod._sum?.totalExclVat ?? 0).toString()).abs(),
           ),
         ),
+        previousInvoiced: moneyOut(
+          dec((previousSales._sum?.totalExclVat ?? 0).toString()).minus(
+            dec((previousCredit._sum?.totalExclVat ?? 0).toString()).abs(),
+          ),
+        ),
         collectedPeriod: moneyOut(collectedPeriod._sum?.amount ?? 0),
         documentCount: salesPeriodCount,
       },
@@ -325,6 +418,19 @@ export class DashboardService {
         deliveriesAwaitingInvoice,
       },
       salesTrend,
+      collectedTrend,
+      monthlyTrend,
+      receivablesAging: (Object.keys(aging) as Array<keyof typeof aging>).map((bucket) => ({
+        bucket,
+        amount: moneyOut(aging[bucket].amount),
+        count: aging[bucket].count,
+      })),
+      topProducts: topProductRows.map((row) => ({
+        sku: row.sku,
+        description: row.description,
+        quantity: qtyOut(row._sum?.quantity ?? 0),
+        total: moneyOut(row._sum?.taxableBase ?? 0),
+      })),
       topClients: topClientRows.map((row) => ({
         contactId: row.contactId,
         contactName: contactNames.get(row.contactId) ?? '',

@@ -292,7 +292,7 @@ export class ContactsService {
         },
       }),
       this.prisma.payment.findMany({
-        where: { companyId: ctx.companyId, contactId, paidAt: { lte: to } },
+        where: { companyId: ctx.companyId, contactId, status: { notIn: ['BOUNCED', 'CANCELLED'] }, paidAt: { lte: to } },
         orderBy: [{ paidAt: 'asc' }, { createdAt: 'asc' }],
         select: {
           id: true,

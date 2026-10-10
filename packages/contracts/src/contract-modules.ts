@@ -4,6 +4,12 @@ import { commonErrorResponses, uuid } from './common';
 import * as cash from './cash';
 import * as hr from './hr';
 import * as payroll from './payroll';
+import * as treasury from './treasury';
+import * as payables from './payables';
+import * as bank from './bank';
+import * as accounting from './accounting';
+import * as lots from './lots';
+import { payment as documentsPayment } from './documents';
 
 /**
  * Modules that live in their own router: the main `apiContract` type had grown
@@ -348,8 +354,303 @@ const cashContract = c.router(
   { pathPrefix: '/cash' },
 );
 
+const paymentMethodsContract = c.router(
+  {
+    list: {
+      method: 'GET',
+      path: '',
+      headers: companyHeader,
+      responses: { 200: z.array(treasury.paymentMethod), ...commonErrorResponses },
+    },
+    create: {
+      method: 'POST',
+      path: '',
+      headers: companyHeader,
+      body: treasury.paymentMethodBody,
+      responses: { 201: treasury.paymentMethod, ...commonErrorResponses },
+    },
+    update: {
+      method: 'PATCH',
+      path: '/:id',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: treasury.paymentMethodBody.partial(),
+      responses: { 200: treasury.paymentMethod, ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/payment-methods' },
+);
+
+const chequesContract = c.router(
+  {
+    list: {
+      method: 'GET',
+      path: '',
+      headers: companyHeader,
+      query: treasury.chequeListQuery,
+      responses: { 200: treasury.chequeListResponse, ...commonErrorResponses },
+    },
+    setStatus: {
+      method: 'POST',
+      path: '/:id/status',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: treasury.paymentStatusChange,
+      responses: { 200: documentsPayment, ...commonErrorResponses },
+    },
+    history: {
+      method: 'GET',
+      path: '/:id/history',
+      headers: companyHeader,
+      pathParams: idParams,
+      responses: { 200: z.array(treasury.paymentStatusEvent), ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/cheques' },
+);
+
+const payablesContract = c.router(
+  {
+    overview: {
+      method: 'GET',
+      path: '',
+      headers: companyHeader,
+      query: payables.payablesQuery,
+      responses: { 200: payables.payablesOverview, ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/payables' },
+);
+
+const bankContract = c.router(
+  {
+    listAccounts: {
+      method: 'GET',
+      path: '/accounts',
+      headers: companyHeader,
+      responses: { 200: z.array(bank.bankAccount), ...commonErrorResponses },
+    },
+    createAccount: {
+      method: 'POST',
+      path: '/accounts',
+      headers: companyHeader,
+      body: bank.bankAccountBody,
+      responses: { 201: bank.bankAccount, ...commonErrorResponses },
+    },
+    updateAccount: {
+      method: 'PATCH',
+      path: '/accounts/:id',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: bank.bankAccountBody.partial(),
+      responses: { 200: bank.bankAccount, ...commonErrorResponses },
+    },
+    listLines: {
+      method: 'GET',
+      path: '/accounts/:id/lines',
+      headers: companyHeader,
+      pathParams: idParams,
+      query: bank.bankLinesQuery,
+      responses: { 200: z.array(bank.bankLine), ...commonErrorResponses },
+    },
+    importStatement: {
+      method: 'POST',
+      path: '/accounts/:id/import',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: bank.bankImportBody,
+      responses: { 200: bank.bankImportResult, ...commonErrorResponses },
+    },
+    autoMatch: {
+      method: 'POST',
+      path: '/accounts/:id/auto-match',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: z.object({}),
+      responses: { 200: bank.bankAutoMatchResult, ...commonErrorResponses },
+    },
+    candidates: {
+      method: 'GET',
+      path: '/lines/:id/candidates',
+      headers: companyHeader,
+      pathParams: idParams,
+      responses: { 200: z.array(bank.bankCandidate), ...commonErrorResponses },
+    },
+    match: {
+      method: 'POST',
+      path: '/lines/:id/match',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: bank.bankMatchBody,
+      responses: { 200: bank.bankLine, ...commonErrorResponses },
+    },
+    unmatch: {
+      method: 'POST',
+      path: '/lines/:id/unmatch',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: z.object({}),
+      responses: { 200: bank.bankLine, ...commonErrorResponses },
+    },
+    ignore: {
+      method: 'POST',
+      path: '/lines/:id/ignore',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: z.object({ ignored: z.boolean() }),
+      responses: { 200: bank.bankLine, ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/bank' },
+);
+
+const accountingContract = c.router(
+  {
+    listAccounts: {
+      method: 'GET',
+      path: '/accounts',
+      headers: companyHeader,
+      responses: { 200: z.array(accounting.account), ...commonErrorResponses },
+    },
+    createAccount: {
+      method: 'POST',
+      path: '/accounts',
+      headers: companyHeader,
+      body: accounting.accountBody,
+      responses: { 201: accounting.account, ...commonErrorResponses },
+    },
+    updateAccount: {
+      method: 'PATCH',
+      path: '/accounts/:id',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: accounting.accountBody.partial(),
+      responses: { 200: accounting.account, ...commonErrorResponses },
+    },
+    sync: {
+      method: 'POST',
+      path: '/sync',
+      headers: companyHeader,
+      body: z.object({}),
+      responses: { 200: accounting.syncResult, ...commonErrorResponses },
+    },
+    listEntries: {
+      method: 'GET',
+      path: '/entries',
+      headers: companyHeader,
+      query: accounting.entriesQuery,
+      responses: { 200: z.array(accounting.journalEntry), ...commonErrorResponses },
+    },
+    createEntry: {
+      method: 'POST',
+      path: '/entries',
+      headers: companyHeader,
+      body: accounting.entryBody,
+      responses: { 201: accounting.journalEntry, ...commonErrorResponses },
+    },
+    deleteEntry: {
+      method: 'DELETE',
+      path: '/entries/:id',
+      headers: companyHeader,
+      pathParams: idParams,
+      responses: { 200: ok, ...commonErrorResponses },
+    },
+    ledger: {
+      method: 'GET',
+      path: '/ledger',
+      headers: companyHeader,
+      query: accounting.ledgerQuery,
+      responses: { 200: accounting.ledgerResponse, ...commonErrorResponses },
+    },
+    trialBalance: {
+      method: 'GET',
+      path: '/trial-balance',
+      headers: companyHeader,
+      query: accounting.periodQuery,
+      responses: { 200: accounting.trialBalanceResponse, ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/accounting' },
+);
+
+const lotsContract = c.router(
+  {
+    list: {
+      method: 'GET',
+      path: '',
+      headers: companyHeader,
+      query: lots.lotsQuery,
+      responses: { 200: lots.lotsResponse, ...commonErrorResponses },
+    },
+    unassigned: {
+      method: 'GET',
+      path: '/unassigned',
+      headers: companyHeader,
+      responses: { 200: z.array(lots.unassignedItem), ...commonErrorResponses },
+    },
+    tracked: {
+      method: 'GET',
+      path: '/variants',
+      headers: companyHeader,
+      query: lots.trackedQuery,
+      responses: { 200: z.array(lots.trackedVariant), ...commonErrorResponses },
+    },
+    setTracking: {
+      method: 'POST',
+      path: '/tracking',
+      headers: companyHeader,
+      body: lots.setTrackingBody,
+      responses: { 200: lots.trackedVariant, ...commonErrorResponses },
+    },
+    assign: {
+      method: 'POST',
+      path: '/assign',
+      headers: companyHeader,
+      body: lots.assignBody,
+      responses: { 201: z.array(lots.lotItem), ...commonErrorResponses },
+    },
+    update: {
+      method: 'PATCH',
+      path: '/:id',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: lots.lotPatch,
+      responses: { 200: lots.lotItem, ...commonErrorResponses },
+    },
+    writeOff: {
+      method: 'POST',
+      path: '/:id/write-off',
+      headers: companyHeader,
+      pathParams: idParams,
+      body: lots.writeOffBody,
+      responses: { 200: lots.lotItem, ...commonErrorResponses },
+    },
+    trace: {
+      method: 'GET',
+      path: '/:id/trace',
+      headers: companyHeader,
+      pathParams: idParams,
+      responses: { 200: z.array(lots.traceItem), ...commonErrorResponses },
+    },
+    generateBarcodes: {
+      method: 'POST',
+      path: '/barcodes',
+      headers: companyHeader,
+      body: lots.barcodesBody,
+      responses: { 200: lots.barcodesResult, ...commonErrorResponses },
+    },
+  },
+  { pathPrefix: '/lots' },
+);
+
 export const moduleContract = c.router(
   {
+    lots: lotsContract,
+    accounting: accountingContract,
+    bank: bankContract,
+    payables: payablesContract,
+    paymentMethods: paymentMethodsContract,
+    cheques: chequesContract,
     hr: hrContract,
     cash: cashContract,
     payroll: payrollContract,

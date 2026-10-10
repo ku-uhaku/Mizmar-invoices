@@ -1,0 +1,20 @@
+/** Supplier payables. French source text to English. */
+export const EN_PAYABLES: Record<string, string> = {
+  'Dettes fournisseurs': 'Payables',
+  'Factures d’achat et dépenses à payer, par échéance': 'Purchase invoices and expenses to pay, by due date',
+  'Total à payer': 'Total payable',
+  'En retard': 'Overdue',
+  'À payer sous 7 jours': 'Due within 7 days',
+  '{n} facture(s)': '{n} bill(s)',
+  'Factures à payer': 'Bills to pay',
+  'Rien à payer': 'Nothing to pay',
+  'Les factures d’achat validées et les dépenses impayées apparaîtront ici.': 'Validated purchase invoices and unpaid expenses will appear here.',
+  '{n} j de retard': '{n} d overdue',
+  Fournisseur: 'Supplier',
+  'Facture d’achat': 'Purchase invoice',
+  Dépense: 'Expense',
+  Payer: 'Pay',
+  Ouvrir: 'Open',
+  'Payer le fournisseur': 'Pay supplier',
+  'Réparti sur les factures, de la plus ancienne échéance à la plus récente': 'Split across invoices, earliest due date first',
+};

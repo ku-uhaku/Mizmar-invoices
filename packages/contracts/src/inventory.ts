@@ -4,6 +4,7 @@ import {
   countSessionStatusEnum,
   decimalInput,
   decimalString,
+  isoDate,
   isoDateTime,
   movementTypeEnum,
   stockDirectionEnum,
@@ -108,6 +109,9 @@ export const adjustmentRequest = z.object({
         variantId: uuid,
         quantityDelta: decimalInput,
         unitCost: decimalInput.optional(),
+        /** Receiving into a lot (items with lot tracking). */
+        lotNumber: z.string().trim().min(1).max(60).optional(),
+        expiryDate: isoDate.nullish(),
       }),
     )
     .min(1),

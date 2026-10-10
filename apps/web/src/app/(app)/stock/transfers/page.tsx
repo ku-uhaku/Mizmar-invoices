@@ -5,7 +5,6 @@ import { useState } from 'react';
 import type { VariantSearchResult } from '@mizmar/contracts';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
-import { StockTabs } from '@/components/stock-tabs';
 import { VariantPicker } from '@/components/variant-picker';
 import {
   Badge,
@@ -120,7 +119,6 @@ export default function TransfersPage() {
   return (
     <>
       <PageHeader title={t('Stock')} subtitle={t('Transferts entre entrepôts')} />
-      <StockTabs />
 
       <Card className="mb-6">
         <CardHeader

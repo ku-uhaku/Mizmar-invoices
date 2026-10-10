@@ -20,6 +20,7 @@ import {
 } from '@/components/ui';
 import { CancelPaymentDialog, EditPaymentDialog } from '@/components/dialogs/payment-edit-dialog';
 import { date, money, PAYMENT_METHOD_LABELS } from '@/lib/format';
+import { PAYMENT_STATUS } from '@/lib/payment-status';
 import { useT } from '@/lib/i18n/provider';
 
 type Payment = z.infer<typeof documentSchemas.payment>;
@@ -82,7 +83,12 @@ export default function PaymentsPage() {
                     </Badge>
                   </Td>
                   <Td className="text-ink-muted">
-                    {t(PAYMENT_METHOD_LABELS[payment.method] ?? payment.method)}
+                    {t(payment.methodName ?? PAYMENT_METHOD_LABELS[payment.method] ?? payment.method)}
+                    {payment.status !== 'CLEARED' && (
+                      <Badge tone={PAYMENT_STATUS[payment.status].tone} className="ms-2">
+                        {t(PAYMENT_STATUS[payment.status].label)}
+                      </Badge>
+                    )}
                   </Td>
                   <Td className="text-ink-muted">{payment.reference ?? '—'}</Td>
                   <Td>

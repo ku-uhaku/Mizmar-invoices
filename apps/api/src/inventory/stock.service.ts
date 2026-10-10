@@ -16,6 +16,7 @@ import {
 import { AppError } from '../common/app-error';
 import { toPrismaDecimal, toPrismaDecimalOrNull } from '../common/util/decimal';
 import type { PrismaTx } from '../prisma/prisma.service';
+import { syncLots } from './lots';
 
 export interface LevelKey {
   variantId: string;
@@ -44,6 +45,10 @@ export interface MovementInput extends LevelKey {
   transferLineId?: string | null;
   reversesMovementId?: string | null;
   note?: string | null;
+  /** Receiving into a named lot (tracked variants only). */
+  lot?: { lotNumber: string; expiryDate?: string | null } | null;
+  /** Drawing from one specific lot, e.g. a write-off. */
+  fromLotId?: string | null;
 }
 
 export interface ApplyOptions {
@@ -265,6 +270,8 @@ export class StockService {
         averageCost: toPrismaDecimal(averageCostAfter),
       },
     });
+
+    await syncLots(tx, input, movement.id, signed);
 
     return movement.id;
   }

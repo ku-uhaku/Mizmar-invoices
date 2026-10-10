@@ -232,3 +232,30 @@ tbody tr {
   --series-7: #9085e9;
   --series-8: #e66767;
 }
+
+.side-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-side-border) transparent;
+}
+
+/* Label sheets: print only the labels, none of the app chrome. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .label-sheet,
+  .label-sheet * {
+    visibility: visible;
+  }
+  .label-sheet {
+    position: absolute;
+    inset-inline-start: 0;
+    top: 0;
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+  .label-cell {
+    break-inside: avoid;
+    border-color: transparent !important;
+  }
+}

@@ -25,6 +25,10 @@ import { PricingModule } from './pricing/pricing.module';
 import { SettingsModule } from './settings/settings.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReceivablesModule } from './receivables/receivables.module';
+import { PayablesModule } from './payables/payables.module';
+import { BankModule } from './bank/bank.module';
+import { AccountingModule } from './accounting/accounting.module';
+import { LotsModule } from './lots/lots.module';
 import { ReportsModule } from './reports/reports.module';
 import { RecurringModule } from './recurring/recurring.module';
 import { ExpensesModule } from './expenses/expenses.module';
@@ -88,6 +92,10 @@ import { CashModule } from './cash/cash.module';
     HrModule,
     PayrollModule,
     CashModule,
+    PayablesModule,
+    BankModule,
+    AccountingModule,
+    LotsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
