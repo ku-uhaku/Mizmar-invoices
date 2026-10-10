@@ -49,6 +49,14 @@ export class ContactsController {
     });
   }
 
+  @TsRestHandler(apiContract.contacts.setOpeningBalance)
+  setOpeningBalance(@Ctx() ctx: RequestContext) {
+    return tsRestHandler(apiContract.contacts.setOpeningBalance, async ({ params, body }) => ({
+      status: 200 as const,
+      body: await this.contacts.setOpeningBalance(ctx, params.id, body),
+    }));
+  }
+
   @TsRestHandler(apiContract.contacts.statement)
   statement(@Ctx() ctx: RequestContext) {
     return tsRestHandler(apiContract.contacts.statement, async ({ params, query }) => ({

@@ -12,7 +12,6 @@ import {
   CardHeader,
   EmptyState,
   LinkButton,
-  PageHeader,
   Skeleton,
   StatCard,
   Table,
@@ -162,23 +161,44 @@ export default function DashboardPage() {
 
   return (
     <>
-      <PageHeader
-        title={`${greeting}${firstName ? `, ${firstName}` : ''}`}
-        subtitle={new Intl.DateTimeFormat(DATE_LOCALES[locale], {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-        }).format(new Date())}
-        actions={
-          <>
-            <LinkButton href="/documents/new?type=DEVIS">{t('Nouveau devis')}</LinkButton>
-            <LinkButton variant="primary" href="/documents/new?type=SALES_INVOICE">
+      <section className="relative mb-5 overflow-hidden rounded-card bg-linear-to-br from-brand-strong to-brand px-5 py-6 text-white shadow-(--shadow-card) sm:px-7 sm:py-7 dark:from-side dark:to-side-raised">
+        <div aria-hidden className="zellige-pattern absolute inset-0 opacity-25!" />
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-white/70">
+              {new Intl.DateTimeFormat(DATE_LOCALES[locale], {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              }).format(new Date())}
+            </p>
+            <h1 className="font-display mt-1 truncate text-2xl font-semibold tracking-tight sm:text-[28px]">
+              {greeting}
+              {firstName ? `, ${firstName}` : ''}
+            </h1>
+            <p className="mt-1 text-sm text-white/70">
+              {pendingTotal > 0
+                ? t('{count} élément(s) attendent votre action', { count: pendingTotal })
+                : t('Tout est à jour')}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/documents/new?type=DEVIS"
+              className="inline-flex h-10 items-center rounded-lg border border-white/30 px-4 text-sm font-medium text-white transition hover:bg-white/10"
+            >
+              {t('Nouveau devis')}
+            </Link>
+            <Link
+              href="/documents/new?type=SALES_INVOICE"
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-white px-4 text-sm font-semibold text-brand-strong shadow-sm transition hover:bg-white/90"
+            >
               <Icon name="plus" /> {t('Nouvelle facture')}
-            </LinkButton>
-          </>
-        }
-      />
+            </Link>
+          </div>
+        </div>
+      </section>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard

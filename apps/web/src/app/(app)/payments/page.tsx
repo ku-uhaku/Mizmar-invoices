@@ -92,7 +92,12 @@ export default function PaymentsPage() {
                   </Td>
                   <Td className="text-ink-muted">{payment.reference ?? '—'}</Td>
                   <Td>
-                    <span className="flex flex-wrap gap-x-2">
+                    <span className="flex flex-wrap items-center gap-x-2">
+                      {Number(payment.unallocated) > 0 && (
+                        <Badge tone="progress">
+                          {t('Non affecté {amount}', { amount: money(payment.unallocated, payment.currency) })}
+                        </Badge>
+                      )}
                       {payment.allocations.map((allocation) => (
                         <Link
                           key={allocation.documentId}

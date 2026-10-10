@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { use, useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { ContactForm } from '@/components/contact-form';
+import { AdvanceDialog, OpeningBalanceDialog } from '@/components/dialogs/opening-balance-dialog';
 import { useT } from '@/lib/i18n/provider';
 import { Icon } from '@/components/icons';
 import {
@@ -50,6 +51,8 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
   const router = useRouter();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [openingOpen, setOpeningOpen] = useState(false);
+  const [advanceOpen, setAdvanceOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [tab, setTab] = useState<'statement' | 'documents' | 'profile'>('statement');
@@ -175,6 +178,12 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setOpeningOpen(true)}>
+              {t('Solde d’ouverture')}
+            </Button>
+            <Button variant="secondary" onClick={() => setAdvanceOpen(true)}>
+              {t('Avance / prêt')}
+            </Button>
             <Button variant="secondary" onClick={() => setEditing(true)}>
               {t('Modifier')}
             </Button>
@@ -191,6 +200,25 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
         </div>
       </Card>
 
+      {openingOpen && (
+        <OpeningBalanceDialog
+          contactId={id}
+          contactName={contact.displayName}
+          kind={contact.kind}
+          current={contact.openingBalance ?? null}
+          currency={currency}
+          onClose={() => setOpeningOpen(false)}
+        />
+      )}
+      {advanceOpen && (
+        <AdvanceDialog
+          contactId={id}
+          contactName={contact.displayName}
+          kind={contact.kind}
+          currency={currency}
+          onClose={() => setAdvanceOpen(false)}
+        />
+      )}
       <ContactForm open={editing} onClose={() => setEditing(false)} contact={contact} />
       <Dialog
         open={confirmDelete}
@@ -312,7 +340,7 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
                   <tr key={`${row.documentId}-${index}`}>
                     <Td className="whitespace-nowrap text-ink-muted">{date(row.issueDate)}</Td>
                     <Td>
-                      {row.documentType === 'PAYMENT' ? (
+                      {row.documentType === 'PAYMENT' || row.documentType === 'OPENING' ? (
                         row.label
                       ) : (
                         <Link

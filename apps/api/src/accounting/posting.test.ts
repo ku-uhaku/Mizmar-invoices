@@ -5,6 +5,7 @@ import {
   expensePaymentDraft,
   fingerprint,
   isBalanced,
+  openingDraft,
   paymentDrafts,
   reverseLines,
   type PaymentFacts,
@@ -121,5 +122,29 @@ describe('helpers', () => {
     expect(a).toBe(fingerprint('2026-10-01', [{ code: '3421', debit: '10.00', credit: '0.00' }]));
     expect(a).not.toBe(fingerprint('2026-10-02', [{ code: '3421', debit: '10', credit: '0' }]));
     expect(a).not.toBe(fingerprint('2026-10-01', [{ code: '3421', debit: '11', credit: '0' }]));
+  });
+});
+
+describe('openingDraft', () => {
+  const base = { id: 'o1', contactName: 'Atlas', date: '2026-01-01' };
+
+  it('a client who owes you debits clients against report à nouveau', () => {
+    const draft = openingDraft({ ...base, supplier: false, amount: '5000' })!;
+    expect(isBalanced(draft.lines)).toBe(true);
+    expect(draft.lines.find((l) => l.role === 'RECEIVABLE')?.debit).toBe('5000.00');
+    expect(draft.lines.find((l) => l.role === 'OPENING')?.credit).toBe('5000.00');
+  });
+  it('a supplier you owe credits suppliers', () => {
+    const draft = openingDraft({ ...base, supplier: true, amount: '800' })!;
+    expect(draft.lines.find((l) => l.role === 'PAYABLE')?.credit).toBe('800.00');
+    expect(draft.lines.find((l) => l.role === 'OPENING')?.debit).toBe('800.00');
+  });
+  it('an advance (negative) flips both sides', () => {
+    const draft = openingDraft({ ...base, supplier: false, amount: '-300' })!;
+    expect(draft.lines.find((l) => l.role === 'RECEIVABLE')?.credit).toBe('300.00');
+    expect(draft.lines.find((l) => l.role === 'OPENING')?.debit).toBe('300.00');
+  });
+  it('posts nothing for zero', () => {
+    expect(openingDraft({ ...base, supplier: false, amount: '0' })).toBeNull();
   });
 });

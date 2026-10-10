@@ -122,6 +122,7 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
       { href: '/settings/exchange-rates', label: 'Taux de change', icon: 'trending' },
       { href: '/settings/numbering', label: 'Numérotation', icon: 'order' },
       { href: '/settings/members', label: 'Membres', icon: 'users' },
+      { href: '/settings/whatsapp', label: 'WhatsApp', icon: 'mail' },
       { href: '/settings/templates', label: 'Modèles de document', icon: 'file' },
       { href: '/settings/audit-log', label: 'Journal d’activité', icon: 'clock' },
       { href: '/settings/language', label: 'Langue & apparence', icon: 'sun' },
@@ -240,12 +241,13 @@ function Shell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen">
       <aside
         className={clsx(
-          'fixed inset-y-0 z-40 flex w-65 shrink-0 flex-col bg-side text-side-ink transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
+          'fixed inset-y-0 z-40 flex w-65 shrink-0 flex-col overflow-hidden bg-side [&>*:not(.zellige-pattern)]:relative text-side-ink transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full lg:rtl:translate-x-0',
         )}
       >
-        <div className="flex items-center gap-3 px-5 pb-4 pt-5">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-brand text-base font-bold text-white shadow-sm">
+        <div aria-hidden className="zellige-pattern absolute inset-x-0 top-0 h-56" />
+        <div className="relative flex items-center gap-3 px-5 pb-4 pt-5">
+          <div className="star-mark flex size-11 shrink-0 items-center justify-center text-base font-bold text-white drop-shadow-sm">
             M
           </div>
           <div className="min-w-0 flex-1">
@@ -375,7 +377,8 @@ function Shell({ children }: { children: ReactNode }) {
         />
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <div aria-hidden className="zellige-pattern zellige-soft absolute inset-x-0 top-14 h-80" />
         <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border bg-canvas/85 px-4 backdrop-blur-md lg:px-8">
           <IconButton label={t('Ouvrir le menu')} onClick={() => setMobileOpen(true)} className="-ms-2 lg:hidden">
             <Icon name="menu" className="size-5" />
@@ -399,7 +402,7 @@ function Shell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-350 min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">
+        <main className="relative mx-auto w-full max-w-350 min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">
           {children}
         </main>
       </div>

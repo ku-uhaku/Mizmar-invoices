@@ -40,6 +40,7 @@ const PATHS = {
   filter: 'M4 5h16l-6 8v6l-4-2v-4z',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   mail: 'M3 6h18v12H3zM3 7l9 6 9-6',
+  whatsapp: 'M3 21l1.6-4.8A8.5 8.5 0 1 1 8 19.5zM9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8c-1-.4-2-1.4-2.4-2.4l.8-1-1-2z',
   printer: 'M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z',
   warehouse: 'M3 10l9-6 9 6v10H3zM8 20v-6h8v6',
   command: 'M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z',

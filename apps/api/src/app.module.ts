@@ -35,6 +35,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { HrModule } from './hr/hr.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { CashModule } from './cash/cash.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { CashModule } from './cash/cash.module';
     CatalogModule,
     InventoryModule,
     MailModule,
+    WhatsappModule,
     PdfModule,
     DocumentsModule,
     PaymentsModule,

@@ -155,7 +155,7 @@ export function CardHeader({
   return (
     <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
       <div className="min-w-0">
-        <h2 className="truncate text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
+        <h2 className="font-display truncate text-base font-semibold tracking-tight text-ink">{title}</h2>
         {description && <p className="mt-0.5 text-xs text-ink-muted">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -175,7 +175,7 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="font-display text-[28px] font-semibold tracking-tight text-ink">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -665,7 +665,7 @@ export function StatCard({
           <Icon name={icon} />
         </span>
       </div>
-      <p className="tabular mt-2 text-xl font-semibold leading-none tracking-tight text-ink sm:mt-3 sm:text-[26px]">
+      <p className="tabular font-display mt-2 text-xl font-semibold leading-none tracking-tight text-ink sm:mt-3 sm:text-[28px]">
         {value}
       </p>
       {hint && <p className="mt-2 text-xs text-ink-muted">{hint}</p>}

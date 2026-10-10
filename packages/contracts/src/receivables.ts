@@ -17,6 +17,7 @@ export const overdueInvoice = z.object({
   contactId: uuid,
   contactName: z.string(),
   contactEmail: z.string().nullable(),
+  contactPhone: z.string().nullable(),
   issueDate: isoDate,
   dueDate: isoDate,
   currency: z.string(),
@@ -67,6 +68,10 @@ export const remindRequest = z
     force: z.boolean().default(false),
     attachPdf: z.boolean().default(true),
     locale: localeEnum.optional(),
+    /** Where to send; WhatsApp needs the gateway to be configured. */
+    channels: z.array(z.enum(['EMAIL', 'WHATSAPP'])).min(1).default(['EMAIL']),
+    /** Phone numbers typed in for contacts that have none, keyed by contact id. */
+    phones: z.record(uuid, z.string().min(6).max(40)).optional(),
   })
   .refine((v) => v.documentIds?.length || v.contactId, {
     message: 'documentIds or contactId is required',
@@ -77,6 +82,7 @@ export const remindOutcome = z.enum([
   'SKIPPED_RECENT',
   'SKIPPED_NOT_OVERDUE',
   'NO_EMAIL',
+  'NO_PHONE',
   'FAILED',
 ]);
 
@@ -84,6 +90,8 @@ export const remindResponse = z.object({
   results: z.array(
     z.object({
       documentId: uuid,
+      /** Needed to ask for a missing phone number. */
+      contactId: uuid.nullable(),
       number: z.string().nullable(),
       outcome: remindOutcome,
       level: z.number().int().nullable(),
@@ -97,7 +105,7 @@ export const reminderRow = z.object({
   id: uuid,
   sentAt: isoDateTime,
   sentByName: z.string().nullable(),
-  channel: z.enum(['EMAIL']),
+  channel: z.enum(['EMAIL', 'WHATSAPP']),
   level: z.number().int(),
   recipient: z.string().nullable(),
 });

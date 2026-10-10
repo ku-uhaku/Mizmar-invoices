@@ -1,6 +1,6 @@
 import { Controller } from '@nestjs/common';
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
-import { apiContract } from '@mizmar/contracts';
+import { apiContract, moduleContract } from '@mizmar/contracts';
 import { Ctx } from '../common/decorators/ctx.decorator';
 import type { RequestContext } from '../tenancy/request-context';
 import { DocumentsService } from './documents.service';
@@ -131,6 +131,14 @@ export class DocumentsController {
   sendEmail(@Ctx() ctx: RequestContext) {
     return tsRestHandler(apiContract.documents.sendEmail, async ({ params, body }) => {
       await this.delivery.sendByEmail(ctx, params.id, body);
+      return { status: 200 as const, body: { ok: true as const } };
+    });
+  }
+
+  @TsRestHandler(moduleContract.whatsapp.sendDocument)
+  sendWhatsapp(@Ctx() ctx: RequestContext) {
+    return tsRestHandler(moduleContract.whatsapp.sendDocument, async ({ params, body }) => {
+      await this.delivery.sendByWhatsapp(ctx, params.id, body);
       return { status: 200 as const, body: { ok: true as const } };
     });
   }

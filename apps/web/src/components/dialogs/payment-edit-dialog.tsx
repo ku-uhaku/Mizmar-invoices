@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { documentSchemas } from '@mizmar/contracts';
 import type { z } from 'zod';
@@ -46,6 +46,25 @@ export function EditPaymentDialog({ payment, onClose }: { payment: Payment; onCl
   const [note, setNote] = useState(payment.note ?? '');
   const [error, setError] = useState<string | null>(null);
 
+  // Money not yet tied to an invoice can be applied to this contact's open ones.
+  const spare = Number(payment.unallocated);
+  const openInvoices = useQuery({
+    queryKey: ['documents', 'contact', payment.contactId, 'open'],
+    queryFn: async () =>
+      unwrap(await api.documents.list({ query: { contactId: payment.contactId, limit: 100 } })),
+    enabled: spare > 0,
+  });
+  const applicable = (openInvoices.data?.items ?? []).filter(
+    (doc) =>
+      (doc.lifecycle === 'VALIDATED' || doc.lifecycle === 'SENT') &&
+      doc.type === (payment.direction === 'OUTBOUND' ? 'PURCHASE_INVOICE' : 'SALES_INVOICE') &&
+      Number(doc.outstandingAmount) > 0 &&
+      !payment.allocations.some((a) => a.documentId === doc.id),
+  );
+  const [apply, setApply] = useState<Record<string, string>>({});
+  const applied = Object.values(apply).reduce((sum, value) => sum + Number(value || 0), 0);
+  const applying = applied > 0;
+
   const total = split
     ? payment.allocations.reduce((sum, a) => sum + Number(parts[a.documentId] || 0), 0)
     : Number(amount);
@@ -63,11 +82,16 @@ export function EditPaymentDialog({ payment, onClose }: { payment: Payment; onCl
             reference: fields.reference || null,
             paidAt,
             note: note || null,
-            amount: split ? total.toFixed(2) : amount,
-            allocations: payment.allocations.map((a) => ({
-              documentId: a.documentId,
-              amount: split ? parts[a.documentId] || '0' : amount,
-            })),
+            amount: applying ? payment.amount : split ? total.toFixed(2) : amount,
+            allocations: [
+              ...payment.allocations.map((a) => ({
+                documentId: a.documentId,
+                amount: applying ? a.amount : split ? parts[a.documentId] || '0' : amount,
+              })),
+              ...Object.entries(apply)
+                .filter(([, value]) => Number(value) > 0)
+                .map(([documentId, value]) => ({ documentId, amount: value })),
+            ],
           },
         }),
       );
@@ -96,7 +120,11 @@ export function EditPaymentDialog({ payment, onClose }: { payment: Payment; onCl
           <Button
             variant="primary"
             loading={save.isPending}
-            disabled={!(total > 0) || methodFieldsMissing(methods.data, fields)}
+            disabled={
+              !(total > 0 || spare > 0) ||
+              applied > spare + 0.005 ||
+              methodFieldsMissing(methods.data, fields)
+            }
             onClick={() => save.mutate()}
           >
             {t('Enregistrer')}
@@ -127,6 +155,29 @@ export function EditPaymentDialog({ payment, onClose }: { payment: Payment; onCl
           <Field label={t('Montant')} required>
             <NumberInput value={amount} onChange={(event) => setAmount(event.target.value)} />
           </Field>
+        )}
+
+        {spare > 0 && applicable.length > 0 && (
+          <div className="space-y-2 rounded-xl bg-surface-muted p-3">
+            <p className="text-sm font-medium text-ink">
+              {t('Appliquer {amount} non affecté à des factures', {
+                amount: money(spare.toFixed(2), payment.currency),
+              })}
+            </p>
+            {applicable.map((doc) => (
+              <Field
+                key={doc.id}
+                label={`${doc.number ?? '—'} · ${t('reste')} ${money(doc.outstandingAmount, doc.currency)}`}
+                error={Number(apply[doc.id] || 0) > Number(doc.outstandingAmount) + 0.005 ? t('Supérieur au reste dû') : undefined}
+              >
+                <NumberInput
+                  value={apply[doc.id] ?? ''}
+                  placeholder="0.00"
+                  onChange={(event) => setApply({ ...apply, [doc.id]: event.target.value })}
+                />
+              </Field>
+            ))}
+          </div>
         )}
 
         <Field label={t('Date du règlement')}>

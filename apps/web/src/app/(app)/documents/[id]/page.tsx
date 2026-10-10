@@ -39,7 +39,7 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
   const [validateOpen, setValidateOpen] = useState(false);
   const [convertTarget, setConvertTarget] = useState<DocumentType | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const [emailOpen, setEmailOpen] = useState(false);
+  const [sendChannel, setSendChannel] = useState<'EMAIL' | 'WHATSAPP' | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
@@ -222,10 +222,16 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
             {!isDraft && !isCancelled && (
               <Button
                 variant={emailIsPrimary ? 'primary' : 'secondary'}
-                onClick={() => setEmailOpen(true)}
+                onClick={() => setSendChannel('EMAIL')}
               >
                 <Icon name="mail" />
-                {t('Envoyer')}
+                {t('E-mail')}
+              </Button>
+            )}
+            {!isDraft && !isCancelled && (
+              <Button variant="secondary" onClick={() => setSendChannel('WHATSAPP')}>
+                <Icon name="whatsapp" />
+                WhatsApp
               </Button>
             )}
             <Button variant="secondary" loading={pdf.isPending} onClick={() => pdf.mutate('FR')}>
@@ -375,10 +381,12 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
       />
       <EmailDialog
         documentId={id}
+        contactId={document.contactId}
+        channel={sendChannel ?? 'EMAIL'}
         defaultTo=""
         defaultSubject={`${documentTypeLabel(document.type)} ${document.number ?? ''}`.trim()}
-        open={emailOpen}
-        onClose={() => setEmailOpen(false)}
+        open={sendChannel !== null}
+        onClose={() => setSendChannel(null)}
       />
     </>
   );

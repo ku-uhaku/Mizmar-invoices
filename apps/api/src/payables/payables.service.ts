@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import { AppError } from '../common/app-error';
 import { moneyOut } from '../common/util/decimal';
 import { bucketFor, buildAgeing } from '../receivables/ageing';
+import { openingExposure } from '../contacts/opening';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestContext } from '../tenancy/request-context';
 
@@ -120,6 +121,20 @@ export class PayablesService {
         currency: row.currency,
         total: row.totalInclVat,
         paid: row.paidAmount,
+      });
+    }
+    for (const opening of await openingExposure(this.prisma, ctx.companyId, 'SUPPLIER', query.contactId)) {
+      push({
+        source: 'OPENING',
+        id: opening.contactId,
+        contactId: opening.contactId,
+        contactName: opening.contactName,
+        reference: null,
+        issueDate: opening.asOf,
+        dueDate: opening.asOf,
+        currency: company.defaultCurrency,
+        total: new Prisma.Decimal(opening.outstanding),
+        paid: new Prisma.Decimal(0),
       });
     }
     for (const row of expenses) {

@@ -13,7 +13,7 @@ export interface ChartAccount {
 
 export const DEFAULT_CHART: ChartAccount[] = [
   { code: '1111', name: 'Capital social', type: 'EQUITY', role: 'CAPITAL' },
-  { code: '1191', name: 'Report à nouveau', type: 'EQUITY' },
+  { code: '1191', name: 'Report à nouveau', type: 'EQUITY', role: 'OPENING' },
   { code: '3421', name: 'Clients', type: 'ASSET', role: 'RECEIVABLE' },
   { code: '3425', name: 'Clients - chèques et effets à encaisser', type: 'ASSET', role: 'CHEQUES_IN' },
   { code: '3455', name: 'État - TVA récupérable', type: 'ASSET', role: 'VAT_DEDUCTIBLE' },

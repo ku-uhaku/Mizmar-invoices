@@ -121,4 +121,11 @@ export const AR_SETTINGS: Record<string, string> = {
   "Créer": "إنشاء",
   "Code": "الرمز",
   "Court, utilisé dans la numérotation (ex. MZM)": "قصير، يستخدم في الترقيم (مثل MZM)",
+  "Envoi des documents et relances aux clients via la passerelle OpenWA": "إرسال المستندات والتذكيرات إلى العملاء عبر بوابة OpenWA",
+  "Connexion WhatsApp": "الاتصال",
+  "WhatsApp n’est pas configuré. Renseignez OPENWA_URL, OPENWA_API_KEY et OPENWA_SESSION_ID dans le fichier .env puis redémarrez l’API.": "واتساب غير مهيأ. حدّد OPENWA_URL و OPENWA_API_KEY و OPENWA_SESSION_ID في ملف .env ثم أعد تشغيل الـ API.",
+  "Connecté": "متصل",
+  "Scannez ce code depuis WhatsApp › Appareils connectés › Connecter un appareil.": "امسح هذا الرمز من واتساب › الأجهزة المرتبطة › ربط جهاز.",
+  "La session n’est pas prête. Démarrez-la depuis le tableau de bord OpenWA.": "الجلسة غير جاهزة. شغّلها من لوحة OpenWA.",
+  "Passerelle non officielle : utilisez un numéro dédié, sinon le numéro peut être restreint par WhatsApp.": "بوابة غير رسمية: استخدم رقمًا مخصصًا وإلا قد تقيّده واتساب.",
 };

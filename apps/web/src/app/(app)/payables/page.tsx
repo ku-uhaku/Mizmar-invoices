@@ -146,14 +146,24 @@ export default function PayablesPage() {
                   </Td>
                   <Td>
                     <Link
-                      href={item.source === 'DOCUMENT' ? `/documents/${item.id}` : '/expenses'}
+                      href={
+                        item.source === 'DOCUMENT'
+                          ? `/documents/${item.id}`
+                          : item.source === 'OPENING'
+                            ? `/contacts/${item.contactId}`
+                            : '/expenses'
+                      }
                       className="text-brand hover:underline"
                     >
                       {item.reference ?? '—'}
                     </Link>
                   </Td>
                   <Td className="text-ink-muted">
-                    {item.source === 'DOCUMENT' ? t('Facture d’achat') : t('Dépense')}
+                    {item.source === 'DOCUMENT'
+                      ? t('Facture d’achat')
+                      : item.source === 'OPENING'
+                        ? t('Solde d’ouverture')
+                        : t('Dépense')}
                   </Td>
                   <Td numeric className="font-semibold">
                     {money(item.outstanding, item.currency)}

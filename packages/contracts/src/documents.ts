@@ -418,10 +418,14 @@ export const paymentCreate = z.object({
   note: z.string().max(1000).optional(),
   /** Set by the till: the open cash session this payment belongs to. */
   cashSessionId: uuid.nullish(),
-  /** Omit amounts to settle oldest-first automatically. */
-  allocations: z
-    .array(z.object({ documentId: uuid, amount: decimalInput.optional() }))
-    .min(1),
+  /**
+   * Omit amounts to settle oldest-first automatically. Leave the list empty
+   * to record an advance or a payment against an opening balance; it can be
+   * applied to invoices later.
+   */
+  allocations: z.array(z.object({ documentId: uuid, amount: decimalInput.optional() })).default([]),
+  /** Needed only without allocations; defaults from the contact kind. */
+  direction: z.enum(['INBOUND', 'OUTBOUND']).optional(),
 });
 
 /**
@@ -439,10 +443,7 @@ export const paymentUpdate = z.object({
   paidAt: isoDate.optional(),
   clearedAt: isoDate.nullish(),
   note: z.string().max(1000).nullish(),
-  allocations: z
-    .array(z.object({ documentId: uuid, amount: decimalInput.optional() }))
-    .min(1)
-    .optional(),
+  allocations: z.array(z.object({ documentId: uuid, amount: decimalInput.optional() })).optional(),
 });
 
 export const payment = z.object({
@@ -462,6 +463,8 @@ export const payment = z.object({
   paidAt: isoDate,
   clearedAt: isoDate.nullable(),
   note: z.string().nullable(),
+  /** Part of the amount not applied to any invoice (advance / opening balance). */
+  unallocated: decimalString,
   allocations: z.array(
     z.object({
       documentId: uuid,
@@ -495,6 +498,16 @@ export const sendEmailRequest = z.object({
   body: z.string().min(1).max(20000),
   locale: localeEnum.optional(),
   attachPdf: z.boolean().default(true),
+});
+
+export const sendWhatsappRequest = z.object({
+  /** Any common format; the server normalises it to international digits. */
+  phone: z.string().min(6).max(40),
+  message: z.string().min(1).max(1024),
+  locale: localeEnum.optional(),
+  attachPdf: z.boolean().default(true),
+  /** Store the number on the contact when it has none yet. */
+  savePhoneToContact: z.boolean().default(false),
 });
 
 export type DocumentDetail = z.infer<typeof documentDetail>;

@@ -38,6 +38,7 @@ export function ReminderHistory({ documentId }: { documentId: string }) {
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium text-ink">
                 {t('Relance niveau {n}', { n: reminder.level })}
+                {reminder.channel === 'WHATSAPP' ? ' · WhatsApp' : ''}
               </p>
               <p className="truncate text-xs text-ink-muted">
                 {dateTime(reminder.sentAt)}

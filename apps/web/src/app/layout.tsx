@@ -1,18 +1,16 @@
 import type { Metadata } from 'next';
-import { Inter, Noto_Sans_Arabic } from 'next/font/google';
+import { Cairo, Fraunces, Plus_Jakarta_Sans } from 'next/font/google';
 import { directionFor } from '@mizmar/i18n';
 import { I18nProvider } from '@/lib/i18n/provider';
 import { getLocale } from '@/lib/i18n/server';
 import { Providers } from '@/lib/providers';
 import './globals.css';
 
-const arabic = Noto_Sans_Arabic({
-  subsets: ['arabic'],
-  variable: '--font-arabic',
-  display: 'swap',
-});
-
-const inter = Inter({ subsets: ['latin', 'latin-ext'], variable: '--font-inter', display: 'swap' });
+// Body: a friendly geometric sans. Headings: a soft serif with warmth. Arabic uses
+// Cairo, whose geometric forms sit well beside Jakarta and which also covers Latin.
+const arabic = Cairo({ subsets: ['arabic', 'latin'], variable: '--font-arabic', display: 'swap' });
+const body = Plus_Jakarta_Sans({ subsets: ['latin', 'latin-ext'], variable: '--font-body', display: 'swap' });
+const display = Fraunces({ subsets: ['latin', 'latin-ext'], variable: '--font-display-face', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Mizmar',
@@ -28,7 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html
       lang={locale.toLowerCase()}
       dir={directionFor(locale)}
-      className={`${inter.variable} ${arabic.variable}`}
+      className={`${body.variable} ${display.variable} ${arabic.variable}`}
       suppressHydrationWarning
     >
       <head>

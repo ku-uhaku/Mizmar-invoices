@@ -9,7 +9,8 @@ import * as payables from './payables';
 import * as bank from './bank';
 import * as accounting from './accounting';
 import * as lots from './lots';
-import { payment as documentsPayment } from './documents';
+import { payment as documentsPayment, sendWhatsappRequest } from './documents';
+import * as whatsapp from './whatsapp';
 
 /**
  * Modules that live in their own router: the main `apiContract` type had grown
@@ -643,6 +644,31 @@ const lotsContract = c.router(
   { pathPrefix: '/lots' },
 );
 
+const whatsappContract = c.router(
+  {
+    status: {
+      method: 'GET',
+      path: '/status',
+      responses: { 200: whatsapp.whatsappStatus, ...commonErrorResponses },
+    },
+    qr: {
+      method: 'GET',
+      path: '/qr',
+      responses: { 200: whatsapp.whatsappQr, ...commonErrorResponses },
+    },
+    sendDocument: {
+      method: 'POST',
+      path: '/documents/:id',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: sendWhatsappRequest,
+      responses: { 200: ok, ...commonErrorResponses },
+      summary: 'Send the document to the customer on WhatsApp via the OpenWA gateway',
+    },
+  },
+  { pathPrefix: '/whatsapp' },
+);
+
 export const moduleContract = c.router(
   {
     lots: lotsContract,
@@ -654,6 +680,7 @@ export const moduleContract = c.router(
     hr: hrContract,
     cash: cashContract,
     payroll: payrollContract,
+    whatsapp: whatsappContract,
   },
   {
     pathPrefix: '/api/v1',

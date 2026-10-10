@@ -260,6 +260,15 @@ const contactsContract = c.router(
       pathParams: idParams,
       responses: { 200: ok, ...commonErrorResponses },
     },
+    setOpeningBalance: {
+      method: 'PUT',
+      path: '/:id/opening-balance',
+      pathParams: idParams,
+      headers: companyHeader,
+      body: contacts.openingBalanceInput,
+      responses: { 200: contacts.contact, ...commonErrorResponses },
+      summary: 'Record (or clear) a debt that existed before the contact was entered',
+    },
     statement: {
       method: 'GET',
       path: '/:id/statement',
@@ -821,7 +830,7 @@ const receivablesContract = c.router(
       headers: companyHeader,
       body: receivables.remindRequest,
       responses: { 200: receivables.remindResponse, ...commonErrorResponses },
-      summary: 'Email payment reminders; skipped within 24h of the last one unless forced',
+      summary: 'Email and/or WhatsApp payment reminders; skipped within 24h of the last one unless forced',
     },
     reminders: {
       method: 'GET',

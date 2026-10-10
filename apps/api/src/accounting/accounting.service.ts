@@ -13,6 +13,7 @@ import {
   expenseDraft,
   expensePaymentDraft,
   fingerprint,
+  openingDraft,
   paymentDrafts,
   type Draft,
   type DraftLine,
@@ -353,6 +354,9 @@ export class AccountingService {
 
     const desired = await this.collectDrafts(companyId, company.defaultCurrency);
 
+    if ([...desired.values()].some((draft) => draft.source === 'OPENING')) {
+      await this.ensureOpeningAccount(companyId);
+    }
     const accounts = await this.prisma.account.findMany({ where: { companyId, role: { not: null } } });
     const accountByRole = new Map(accounts.map((account) => [account.role!, account]));
 
@@ -472,7 +476,7 @@ export class AccountingService {
 
   /** What the books should say right now, keyed by posting base. */
   private async collectDrafts(companyId: string, currency: string): Promise<Map<string, Draft>> {
-    const [documents, payments, expenses, expensePayments] = await Promise.all([
+    const [documents, payments, expenses, expensePayments, openings] = await Promise.all([
       this.prisma.document.findMany({
         where: {
           companyId,
@@ -533,6 +537,10 @@ export class AccountingService {
           expense: { select: { reference: true, description: true, category: { select: { name: true } }, supplier: { select: { displayName: true } } } },
         },
       }),
+      this.prisma.contactOpeningBalance.findMany({
+        where: { companyId },
+        select: { id: true, amount: true, asOf: true, contact: { select: { displayName: true, kind: true } } },
+      }),
     ]);
 
     const drafts = new Map<string, Draft>();
@@ -589,6 +597,18 @@ export class AccountingService {
       );
     }
 
+    for (const row of openings) {
+      add(
+        openingDraft({
+          id: row.id,
+          supplier: row.contact.kind === 'SUPPLIER',
+          contactName: row.contact.displayName,
+          date: iso(row.asOf),
+          amount: num(row.amount).toFixed(2),
+        }),
+      );
+    }
+
     for (const row of expensePayments) {
       add(
         expensePaymentDraft({
@@ -605,6 +625,20 @@ export class AccountingService {
   }
 
   // ----- helpers -----------------------------------------------------------
+
+  /** Charts made before opening balances existed have no counter-account for them. */
+  private async ensureOpeningAccount(companyId: string): Promise<void> {
+    const has = await this.prisma.account.count({ where: { companyId, role: 'OPENING' } });
+    if (has > 0) return;
+    const carried = await this.prisma.account.findFirst({ where: { companyId, code: '1191', role: null } });
+    if (carried) {
+      await this.prisma.account.update({ where: { id: carried.id }, data: { role: 'OPENING' } });
+    } else {
+      await this.prisma.account.create({
+        data: { companyId, code: '1191', name: 'Report à nouveau', type: 'EQUITY', role: 'OPENING' },
+      });
+    }
+  }
 
   /** First use of a company: create its chart. Existing charts are left alone. */
   private async ensureChart(companyId: string): Promise<void> {

@@ -10,8 +10,11 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Dialog,
   EmptyState,
+  Field,
+  Input,
   PageHeader,
   Segmented,
   Table,
@@ -22,6 +25,7 @@ import {
 } from '@/components/ui';
 import { date, dateTime, money } from '@/lib/format';
 import { useT } from '@/lib/i18n/provider';
+import { useWhatsappEnabled } from '@/lib/whatsapp';
 
 type Tab = 'overdue' | 'ageing';
 type Bucket = 'ALL' | 'D1_30' | 'D31_60' | 'D61_90' | 'D90_PLUS';
@@ -68,6 +72,14 @@ function Receivables() {
   const [bucket, setBucket] = useState<Bucket>('ALL');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forceIds, setForceIds] = useState<string[] | null>(null);
+  const whatsappEnabled = useWhatsappEnabled();
+  const [viaWhatsapp, setViaWhatsapp] = useState(true);
+  const [phonePrompt, setPhonePrompt] = useState<{
+    documentIds: string[];
+    force: boolean;
+    contacts: Array<{ id: string; name: string }>;
+  } | null>(null);
+  const sendWhatsapp = whatsappEnabled && viaWhatsapp;
 
   const overdue = useQuery({
     queryKey: ['receivables', 'overdue', contactId, bucket],
@@ -86,8 +98,20 @@ function Receivables() {
   });
 
   const remind = useMutation({
-    mutationFn: async (input: { documentIds: string[]; force: boolean }) =>
-      unwrap(await api.receivables.remind({ body: { ...input, attachPdf: true } })),
+    mutationFn: async (input: {
+      documentIds: string[];
+      force: boolean;
+      phones?: Record<string, string>;
+    }) =>
+      unwrap(
+        await api.receivables.remind({
+          body: {
+            ...input,
+            attachPdf: true,
+            channels: sendWhatsapp ? ['EMAIL', 'WHATSAPP'] : ['EMAIL'],
+          },
+        }),
+      ),
     onSuccess: (data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['receivables'] });
       void queryClient.invalidateQueries({ queryKey: ['reminders'] });
@@ -95,10 +119,12 @@ function Receivables() {
 
       const recent = data.results.filter((r) => r.outcome === 'SKIPPED_RECENT');
       const noEmail = data.results.filter((r) => r.outcome === 'NO_EMAIL').length;
+      const noPhone = data.results.filter((r) => r.outcome === 'NO_PHONE').length;
       const failed = data.results.filter((r) => r.outcome === 'FAILED');
 
       if (data.sent > 0) toast.success(t('{n} relance(s) envoyée(s)', { n: data.sent }));
       if (noEmail > 0) toast.error(t('{n} client(s) sans adresse email', { n: noEmail }));
+      if (noPhone > 0) toast.error(t('{n} client(s) sans numéro WhatsApp', { n: noPhone }));
       if (failed.length > 0) toast.error(failed[0]?.message ?? t('Envoi impossible'));
       if (recent.length > 0 && !variables.force) setForceIds(recent.map((r) => r.documentId));
       else setForceIds(null);
@@ -110,6 +136,28 @@ function Receivables() {
   const items = overdue.data?.items ?? [];
   const currency = overdue.data?.currency ?? 'MAD';
   const allSelected = items.length > 0 && items.every((item) => selected.has(item.documentId));
+
+  /** Ask for the numbers of customers that have none before sending on WhatsApp. */
+  function start(documentIds: string[], force: boolean) {
+    if (sendWhatsapp) {
+      const missing = new Map<string, string>();
+      for (const item of items) {
+        if (documentIds.includes(item.documentId) && !item.contactPhone) {
+          missing.set(item.contactId, item.contactName);
+        }
+      }
+      if (missing.size > 0) {
+        setForceIds(null);
+        setPhonePrompt({
+          documentIds,
+          force,
+          contacts: [...missing].map(([id, name]) => ({ id, name })),
+        });
+        return;
+      }
+    }
+    remind.mutate({ documentIds, force });
+  }
 
   function toggle(id: string) {
     setSelected((current) => {
@@ -137,7 +185,7 @@ function Receivables() {
             <Button
               variant="primary"
               loading={remind.isPending}
-              onClick={() => remind.mutate({ documentIds: [...selected], force: false })}
+              onClick={() => start([...selected], false)}
             >
               <Icon name="mail" />
               {t('Relancer la sélection ({n})', { n: selected.size })}
@@ -166,6 +214,13 @@ function Receivables() {
                 label: t(BUCKET_LABELS[value]!),
               })),
             ]}
+          />
+        )}
+        {tab === 'overdue' && whatsappEnabled && (
+          <Checkbox
+            label={t('Aussi par WhatsApp')}
+            checked={viaWhatsapp}
+            onChange={(event) => setViaWhatsapp(event.target.checked)}
           />
         )}
         {contactId && (
@@ -232,6 +287,9 @@ function Receivables() {
                       {!item.contactEmail && (
                         <div className="text-xs text-danger">{t('Pas d’email')}</div>
                       )}
+                      {sendWhatsapp && !item.contactPhone && (
+                        <div className="text-xs text-warning">{t('Pas de numéro WhatsApp')}</div>
+                      )}
                     </Td>
                     <Td className="whitespace-nowrap text-ink-muted">{date(item.dueDate)}</Td>
                     <Td>
@@ -250,8 +308,8 @@ function Receivables() {
                     <Td>
                       <Button
                         size="sm"
-                        disabled={remind.isPending || !item.contactEmail}
-                        onClick={() => remind.mutate({ documentIds: [item.documentId], force: false })}
+                        disabled={remind.isPending || (!item.contactEmail && !sendWhatsapp)}
+                        onClick={() => start([item.documentId], false)}
                       >
                         <Icon name="mail" />
                         {t('Relancer')}
@@ -319,6 +377,19 @@ function Receivables() {
         </Card>
       )}
 
+      {phonePrompt && (
+        <PhonePromptDialog
+          contacts={phonePrompt.contacts}
+          loading={remind.isPending}
+          onClose={() => setPhonePrompt(null)}
+          onSend={(phones) => {
+            const { documentIds, force } = phonePrompt;
+            setPhonePrompt(null);
+            remind.mutate({ documentIds, force, phones });
+          }}
+        />
+      )}
+
       {forceIds && (
         <Dialog
           open
@@ -332,7 +403,7 @@ function Receivables() {
               <Button
                 variant="primary"
                 loading={remind.isPending}
-                onClick={() => remind.mutate({ documentIds: forceIds, force: true })}
+                onClick={() => start(forceIds, true)}
               >
                 {t('Relancer quand même')}
               </Button>
@@ -345,5 +416,64 @@ function Receivables() {
         </Dialog>
       )}
     </>
+  );
+}
+
+/** Collects WhatsApp numbers for customers that have none; they are saved to the contact. */
+function PhonePromptDialog({
+  contacts,
+  loading,
+  onSend,
+  onClose,
+}: {
+  contacts: Array<{ id: string; name: string }>;
+  loading: boolean;
+  onSend: (phones: Record<string, string>) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [phones, setPhones] = useState<Record<string, string>>({});
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('Numéros WhatsApp manquants')}
+      description={t('Saisissez le numéro de ces clients ; il sera enregistré sur leur fiche.')}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            {t('Annuler')}
+          </Button>
+          <Button variant="primary" loading={loading} onClick={() => onSend(clean(phones))}>
+            {t('Envoyer')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {contacts.map((contact) => (
+          <Field key={contact.id} label={contact.name}>
+            <Input
+              dir="ltr"
+              placeholder="06 12 34 56 78"
+              value={phones[contact.id] ?? ''}
+              onChange={(event) => setPhones((c) => ({ ...c, [contact.id]: event.target.value }))}
+            />
+          </Field>
+        ))}
+        <p className="text-xs text-ink-muted">
+          {t('Les clients laissés vides recevront seulement l’e-mail.')}
+        </p>
+      </div>
+    </Dialog>
+  );
+}
+
+function clean(phones: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(phones)
+      .map(([id, phone]) => [id, phone.trim()] as const)
+      .filter(([, phone]) => phone.length >= 6),
   );
 }

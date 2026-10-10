@@ -25,6 +25,7 @@ export * as reportSchemas from './reports';
 export * as pricingSchemas from './pricing';
 export * as recurringSchemas from './recurring';
 export * as settingsSchemas from './settings';
+export * as whatsappSchemas from './whatsapp';
 
 export type { SessionUser, AuthTokens, LoginRequest } from './auth';
 export type { Contact, ContactCreate, Statement } from './contacts';

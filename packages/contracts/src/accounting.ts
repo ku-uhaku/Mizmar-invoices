@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { decimalString, isoDate, uuid } from './common';
 
 export const accountTypeEnum = z.enum(['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE']);
-export const journalSourceEnum = z.enum(['MANUAL', 'DOCUMENT', 'PAYMENT', 'EXPENSE', 'EXPENSE_PAYMENT']);
+export const journalSourceEnum = z.enum(['MANUAL', 'DOCUMENT', 'PAYMENT', 'EXPENSE', 'EXPENSE_PAYMENT', 'OPENING']);
 
 export const account = z.object({
   id: uuid,

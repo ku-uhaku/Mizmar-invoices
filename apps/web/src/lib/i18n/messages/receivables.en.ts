@@ -92,4 +92,10 @@ export const EN_RECEIVABLES: Record<string, string> = {
   Du: 'From',
   Au: 'To',
   'Exporter en CSV': 'Export CSV',
+  "Aussi par WhatsApp": "Also via WhatsApp",
+  "Pas de numéro WhatsApp": "No WhatsApp number",
+  "{n} client(s) sans numéro WhatsApp": "{n} customer(s) without a WhatsApp number",
+  "Numéros WhatsApp manquants": "Missing WhatsApp numbers",
+  "Saisissez le numéro de ces clients ; il sera enregistré sur leur fiche.": "Enter these customers’ numbers; they will be saved on their record.",
+  "Les clients laissés vides recevront seulement l’e-mail.": "Customers left blank will only get the e-mail.",
 };

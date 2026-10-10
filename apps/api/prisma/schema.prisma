@@ -310,28 +310,29 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companyAccess     CompanyAccess[]
-  documents         Document[]
-  payments          Payment[]
-  bankAccounts      BankAccount[]
-  accounts          Account[]
-  journalEntries    JournalEntry[]
-  numberSequences   NumberSequence[]
-  templateConfigs   TemplateConfig[]
-  vatRates          VatRate[]
-  exchangeRates     ExchangeRate[]
-  recurringInvoices RecurringInvoice[]
-  expenses          Expense[]
-  recurringExpenses RecurringExpense[]
-  departments       Department[]
-  employees         Employee[]
-  leaveTypes        LeaveType[]
-  leaveRequests     LeaveRequest[]
-  attendance        AttendanceRecord[]
-  payrollRuleSets   PayrollRuleSet[]
-  cashRegisters     CashRegister[]
-  payrollRuns       PayrollRun[]
-  salaryAdvances    SalaryAdvance[]
+  companyAccess          CompanyAccess[]
+  documents              Document[]
+  payments               Payment[]
+  bankAccounts           BankAccount[]
+  accounts               Account[]
+  contactOpeningBalances ContactOpeningBalance[]
+  journalEntries         JournalEntry[]
+  numberSequences        NumberSequence[]
+  templateConfigs        TemplateConfig[]
+  vatRates               VatRate[]
+  exchangeRates          ExchangeRate[]
+  recurringInvoices      RecurringInvoice[]
+  expenses               Expense[]
+  recurringExpenses      RecurringExpense[]
+  departments            Department[]
+  employees              Employee[]
+  leaveTypes             LeaveType[]
+  leaveRequests          LeaveRequest[]
+  attendance             AttendanceRecord[]
+  payrollRuleSets        PayrollRuleSet[]
+  cashRegisters          CashRegister[]
+  payrollRuns            PayrollRun[]
+  salaryAdvances         SalaryAdvance[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -523,6 +524,7 @@ model Contact {
   recurringInvoices RecurringInvoice[]
   expenses          Expense[]
   recurringExpenses RecurringExpense[]
+  openingBalances   ContactOpeningBalance[]
 
   @@unique([organizationId, code])
   @@index([organizationId, kind])
@@ -1402,6 +1404,7 @@ model Asset {
 
 enum ReminderChannel {
   EMAIL
+  WHATSAPP
 }
 
 /// One dunning message sent about an overdue sales invoice.
@@ -2114,6 +2117,7 @@ enum JournalSource {
   PAYMENT
   EXPENSE
   EXPENSE_PAYMENT
+  OPENING
 }
 
 /// A ledger account of one company's chart. `role` marks the accounts the
@@ -2216,4 +2220,26 @@ model StockLotMovement {
   @@index([lotId])
   @@index([movementId])
   @@map("stock_lot_movements")
+}
+
+/// A debt that already existed between a company and a contact when they
+/// started using the app (old invoices, a loan, an advance). Signed in the
+/// contact's natural direction: positive raises what is outstanding (client
+/// owes you / you owe the supplier), negative is an advance or credit.
+model ContactOpeningBalance {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId String  @db.Uuid
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  amount Decimal  @db.Decimal(18, 2)
+  asOf   DateTime @db.Date
+  note   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, contactId])
+  @@map("contact_opening_balances")
 }

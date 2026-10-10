@@ -158,7 +158,25 @@ export class PaymentsService {
         'A single payment cannot settle both a sale and a purchase',
       );
     }
-    const direction = [...directions][0] ?? 'INBOUND';
+    let direction: 'INBOUND' | 'OUTBOUND' = [...directions][0] ?? 'INBOUND';
+    let fallbackCurrency = documents[0]?.currency;
+    if (documents.length === 0) {
+      // An advance, or a payment against an opening balance: no invoice to tell
+      // us which way the money goes, so the caller or the contact kind does.
+      const [contact, company] = await Promise.all([
+        this.prisma.contact.findFirst({
+          where: { id: body.contactId, organizationId: ctx.organizationId },
+          select: { kind: true },
+        }),
+        this.prisma.company.findUniqueOrThrow({
+          where: { id: ctx.companyId },
+          select: { defaultCurrency: true },
+        }),
+      ]);
+      if (!contact) throw AppError.notFound('Contact', body.contactId);
+      direction = body.direction ?? (contact.kind === 'SUPPLIER' ? 'OUTBOUND' : 'INBOUND');
+      fallbackCurrency = company.defaultCurrency;
+    }
 
     const amount = dec(body.amount);
     if (amount.lte(0)) {
@@ -203,7 +221,7 @@ export class PaymentsService {
       remaining = remaining.minus(take);
     }
 
-    if (allocations.length === 0) {
+    if (allocations.length === 0 && body.allocations.length > 0) {
       throw AppError.unprocessable(
         'NOTHING_TO_ALLOCATE',
         'Every selected document is already fully paid',
@@ -236,7 +254,7 @@ export class PaymentsService {
           },
           reference: body.reference ?? null,
           amount: toPrismaDecimal(amount),
-          currency: body.currency ?? documents[0]!.currency,
+          currency: body.currency ?? fallbackCurrency ?? 'MAD',
           exchangeRate: toPrismaDecimal(body.exchangeRate ?? '1'),
           paidAt: new Date(body.paidAt),
           clearedAt: body.clearedAt ? new Date(body.clearedAt) : null,
@@ -394,7 +412,7 @@ export class PaymentsService {
       remaining = remaining.minus(take);
     }
 
-    if (allocations.length === 0) {
+    if (allocations.length === 0 && wanted.length > 0) {
       throw AppError.unprocessable('NOTHING_TO_ALLOCATE', 'The payment must settle at least one document');
     }
 
@@ -508,6 +526,11 @@ export function mapPayment(
     paidAt: row.paidAt.toISOString().slice(0, 10),
     clearedAt: row.clearedAt?.toISOString().slice(0, 10) ?? null,
     note: row.note,
+    unallocated: moneyOut(
+      dec(row.amount.toFixed()).minus(
+        row.allocations.reduce((sum, allocation) => sum.plus(dec(allocation.amount.toFixed())), dec(0)),
+      ),
+    ),
     allocations: row.allocations.map((allocation) => ({
       documentId: allocation.documentId,
       documentNumber: allocation.document.number,

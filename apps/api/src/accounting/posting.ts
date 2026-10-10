@@ -13,7 +13,7 @@ export interface DraftLine {
 export interface Draft {
   /** Idempotency base: one live entry per base. */
   base: string;
-  source: 'DOCUMENT' | 'PAYMENT' | 'EXPENSE' | 'EXPENSE_PAYMENT';
+  source: 'DOCUMENT' | 'PAYMENT' | 'EXPENSE' | 'EXPENSE_PAYMENT' | 'OPENING';
   date: string;
   label: string;
   lines: DraftLine[];
@@ -190,4 +190,30 @@ export function expensePaymentDraft(facts: {
   return isBalanced(lines)
     ? { base: `EXPPAY:${facts.id}`, source: 'EXPENSE_PAYMENT', date: facts.date, label: `Règlement — ${facts.label}`, lines }
     : null;
+}
+
+// ---------------------------------------------------------------------------
+// Opening balances
+// ---------------------------------------------------------------------------
+
+/**
+ * A debt carried over from before the app: it enters the books against
+ * "report à nouveau". Positive is in the contact's natural direction (client
+ * owes you / you owe the supplier); a negative amount flips both lines.
+ */
+export function openingDraft(facts: {
+  id: string;
+  supplier: boolean;
+  contactName: string;
+  date: string;
+  amount: string;
+}): Draft | null {
+  const amount = dec(facts.amount).toFixed(2);
+  const label = `Solde d’ouverture — ${facts.contactName}`;
+  const lines = compact(
+    facts.supplier
+      ? [line('OPENING', 'debit', amount), line('PAYABLE', 'credit', amount, facts.contactName)]
+      : [line('RECEIVABLE', 'debit', amount, facts.contactName), line('OPENING', 'credit', amount)],
+  );
+  return isBalanced(lines) ? { base: `OPEN:${facts.id}`, source: 'OPENING', date: facts.date, label, lines } : null;
 }

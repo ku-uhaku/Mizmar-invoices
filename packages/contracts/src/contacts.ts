@@ -41,6 +41,24 @@ export const contactPerson = z.object({
   phone: z.string().nullable(),
 });
 
+/**
+ * A debt that existed before the app was used. Signed in the contact's natural
+ * direction: positive = the client owes you / you owe the supplier, negative =
+ * an advance or credit in the other direction.
+ */
+export const openingBalance = z.object({
+  amount: decimalString,
+  asOf: isoDate,
+  note: z.string().nullable(),
+});
+
+export const openingBalanceInput = z.object({
+  /** Zero removes the opening balance. */
+  amount: decimalInput,
+  asOf: isoDate,
+  note: z.string().max(500).nullish(),
+});
+
 export const contact = z.object({
   id: uuid,
   kind: contactKindEnum,
@@ -70,6 +88,7 @@ export const contact = z.object({
   /** Unpaid total across validated documents, for the directory list. */
   outstandingBalance: decimalString.optional(),
   overdueBalance: decimalString.optional(),
+  openingBalance: openingBalance.nullable().optional(),
 });
 
 export const contactCreate = z.object({

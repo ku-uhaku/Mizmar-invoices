@@ -5,7 +5,7 @@ import type { contactSchemas } from '@mizmar/contracts';
 import type { z } from 'zod';
 import { AppError } from '../common/app-error';
 import { decodeCursor, toPage, type Page } from '../common/util/cursor';
-import { moneyOut, nullableMoneyOut, toPrismaDecimalOrNull } from '../common/util/decimal';
+import { moneyOut, nullableMoneyOut, toPrismaDecimal, toPrismaDecimalOrNull } from '../common/util/decimal';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestContext } from '../tenancy/request-context';
 
@@ -17,6 +17,12 @@ type Statement = z.infer<typeof contactSchemas.statement>;
 type StatementRow = z.infer<typeof contactSchemas.statementRow>;
 
 /** Document types that move a contact's balance. */
+type Opening = { amount: string; asOf: string; note: string | null };
+type Balances = { outstanding: string; overdue: string; opening: Opening | null };
+
+/** Which payment direction reduces what the contact owes: money in from clients, out to suppliers. */
+const naturalDirection = (kind: string) => (kind === 'SUPPLIER' ? 'OUTBOUND' : 'INBOUND');
+
 const BALANCE_TYPES = ['SALES_INVOICE', 'CREDIT_NOTE', 'PURCHASE_INVOICE'] as const;
 
 @Injectable()
@@ -298,12 +304,17 @@ export class ContactsService {
           id: true,
           reference: true,
           method: true,
+          direction: true,
           amount: true,
           paidAt: true,
-          allocations: { select: { document: { select: { number: true } } } },
+          allocations: { select: { amount: true, document: { select: { number: true } } } },
         },
       }),
     ]);
+    const opening = await this.prisma.contactOpeningBalance.findUnique({
+      where: { companyId_contactId: { companyId: ctx.companyId, contactId } },
+    });
+    const natural = naturalDirection(contact.kind);
 
     type Entry = {
       at: Date;
@@ -345,8 +356,32 @@ export class ContactsService {
       });
     }
 
+    if (opening && opening.asOf <= to) {
+      const amount = dec(opening.amount.toFixed());
+      const owed = amount.gt(0);
+      entries.push({
+        at: opening.asOf,
+        signed: amount,
+        row: {
+          documentId: opening.id,
+          documentType: 'OPENING',
+          number: null,
+          issueDate: opening.asOf.toISOString().slice(0, 10),
+          dueDate: opening.asOf.toISOString().slice(0, 10),
+          label: opening.note ? `Solde d’ouverture — ${opening.note}` : 'Solde d’ouverture',
+          debit: owed ? moneyOut(amount) : '0.00',
+          credit: owed ? '0.00' : moneyOut(amount.abs()),
+          outstanding: moneyOut(owed ? amount : 0),
+          daysOverdue: owed ? daysOverdue(opening.asOf, now) : 0,
+          ageingBucket: owed ? ageingBucket(opening.asOf, now) : 'CURRENT',
+        },
+      });
+    }
+
     for (const payment of payments) {
       const amount = dec(payment.amount.toFixed()).abs();
+      // Money moving the "wrong" way (a loan paid to a client) adds to the balance.
+      const reduces = payment.direction === natural;
       const against = payment.allocations
         .map((allocation) => allocation.document.number)
         .filter(Boolean)
@@ -354,7 +389,7 @@ export class ContactsService {
 
       entries.push({
         at: payment.paidAt,
-        signed: amount.negated(),
+        signed: reduces ? amount.negated() : amount,
         row: {
           documentId: payment.id,
           documentType: 'PAYMENT',
@@ -362,8 +397,8 @@ export class ContactsService {
           issueDate: payment.paidAt.toISOString().slice(0, 10),
           dueDate: null,
           label: `Payment ${payment.method}${against ? ` — ${against}` : ''}`,
-          debit: '0.00',
-          credit: moneyOut(amount),
+          debit: reduces ? '0.00' : moneyOut(amount),
+          credit: reduces ? moneyOut(amount) : '0.00',
           outstanding: '0.00',
           daysOverdue: 0,
           ageingBucket: 'CURRENT',
@@ -403,10 +438,28 @@ export class ContactsService {
       ageing[bucket] = ageing[bucket].plus(outstanding);
     }
 
-    const totalPaid = payments.reduce(
-      (acc, payment) => acc.plus(dec(payment.amount.toFixed()).abs()),
-      dec(0),
-    );
+    if (opening && opening.amount.gt(0)) {
+      const amount = dec(opening.amount.toFixed());
+      totalOutstanding = totalOutstanding.plus(amount);
+      const bucket = ageingBucket(opening.asOf, now);
+      ageing[bucket] = ageing[bucket].plus(amount);
+    } else if (opening) {
+      totalOutstanding = totalOutstanding.plus(dec(opening.amount.toFixed()));
+    }
+
+    let totalPaid = dec(0);
+    for (const payment of payments) {
+      const amount = dec(payment.amount.toFixed()).abs();
+      const applied = payment.allocations.reduce((sum, a) => sum.plus(dec(a.amount.toFixed())), dec(0));
+      const spare = amount.minus(applied);
+      if (payment.direction === natural) {
+        totalPaid = totalPaid.plus(amount);
+        // An advance (not yet applied to an invoice) is credit in the contact's favour.
+        totalOutstanding = totalOutstanding.minus(spare);
+      } else {
+        totalOutstanding = totalOutstanding.plus(spare);
+      }
+    }
 
     const balances = await this.balancesFor(ctx, [contactId]);
 
@@ -445,31 +498,59 @@ export class ContactsService {
     return contact;
   }
 
-  /** Outstanding and overdue totals per contact, for the directory list. */
+  /**
+   * Outstanding and overdue totals per contact, for the directory list. The
+   * outstanding figure is the net position: open invoices, plus any opening
+   * balance, minus advances not yet applied to an invoice.
+   */
   private async balancesFor(
     ctx: RequestContext,
     contactIds: string[],
-  ): Promise<Map<string, { outstanding: string; overdue: string }>> {
+  ): Promise<Map<string, Balances>> {
     if (contactIds.length === 0) return new Map();
 
-    const rows = await this.prisma.document.findMany({
-      where: {
-        companyId: ctx.companyId,
-        contactId: { in: contactIds },
-        lifecycle: { in: ['VALIDATED', 'SENT'] },
-        settlement: { in: ['UNPAID', 'PARTIAL'] },
-      },
-      select: {
-        contactId: true,
-        type: true,
-        dueDate: true,
-        totalInclVat: true,
-        paidAmount: true,
-      },
-    });
+    const [rows, openings, spare] = await Promise.all([
+      this.prisma.document.findMany({
+        where: {
+          companyId: ctx.companyId,
+          contactId: { in: contactIds },
+          lifecycle: { in: ['VALIDATED', 'SENT'] },
+          settlement: { in: ['UNPAID', 'PARTIAL'] },
+        },
+        select: {
+          contactId: true,
+          type: true,
+          dueDate: true,
+          totalInclVat: true,
+          paidAmount: true,
+        },
+      }),
+      this.prisma.contactOpeningBalance.findMany({
+        where: { companyId: ctx.companyId, contactId: { in: contactIds } },
+      }),
+      this.prisma.payment.findMany({
+        where: {
+          companyId: ctx.companyId,
+          contactId: { in: contactIds },
+          status: { notIn: ['BOUNCED', 'CANCELLED'] },
+        },
+        select: {
+          contactId: true,
+          direction: true,
+          amount: true,
+          allocations: { select: { amount: true } },
+          contact: { select: { kind: true } },
+        },
+      }),
+    ]);
 
     const now = new Date();
     const result = new Map<string, { outstanding: ReturnType<typeof dec>; overdue: ReturnType<typeof dec> }>();
+    const entryFor = (id: string) => {
+      const entry = result.get(id) ?? { outstanding: dec(0), overdue: dec(0) };
+      result.set(id, entry);
+      return entry;
+    };
 
     for (const row of rows) {
       const outstanding = dec(row.totalInclVat.toFixed())
@@ -478,26 +559,80 @@ export class ContactsService {
       if (outstanding.lte(0)) continue;
 
       const signed = row.type === 'CREDIT_NOTE' ? outstanding.negated() : outstanding;
-      const entry =
-        result.get(row.contactId) ?? { outstanding: dec(0), overdue: dec(0) };
+      const entry = entryFor(row.contactId);
       entry.outstanding = entry.outstanding.plus(signed);
       if (row.dueDate && row.dueDate < now && row.type !== 'CREDIT_NOTE') {
         entry.overdue = entry.overdue.plus(outstanding);
       }
-      result.set(row.contactId, entry);
     }
 
+    const openingBy = new Map<string, Opening>();
+    for (const opening of openings) {
+      const entry = entryFor(opening.contactId);
+      const amount = dec(opening.amount.toFixed());
+      entry.outstanding = entry.outstanding.plus(amount);
+      if (amount.gt(0) && opening.asOf < now) entry.overdue = entry.overdue.plus(amount);
+      openingBy.set(opening.contactId, {
+        amount: moneyOut(amount),
+        asOf: opening.asOf.toISOString().slice(0, 10),
+        note: opening.note,
+      });
+    }
+
+    for (const payment of spare) {
+      const applied = payment.allocations.reduce((sum, a) => sum.plus(dec(a.amount.toFixed())), dec(0));
+      const unapplied = dec(payment.amount.toFixed()).abs().minus(applied);
+      if (unapplied.lte(0)) continue;
+      const entry = entryFor(payment.contactId);
+      entry.outstanding =
+        payment.direction === naturalDirection(payment.contact.kind)
+          ? entry.outstanding.minus(unapplied)
+          : entry.outstanding.plus(unapplied);
+    }
+
+    // Contacts with an opening balance but nothing else still need an entry.
     return new Map(
       [...result.entries()].map(([id, entry]) => [
         id,
-        { outstanding: moneyOut(entry.outstanding), overdue: moneyOut(entry.overdue) },
+        {
+          outstanding: moneyOut(entry.outstanding),
+          overdue: moneyOut(entry.overdue),
+          opening: openingBy.get(id) ?? null,
+        },
       ]),
     );
   }
 
+  async setOpeningBalance(
+    ctx: RequestContext,
+    id: string,
+    body: z.infer<typeof contactSchemas.openingBalanceInput>,
+  ): Promise<Contact> {
+    if (!ctx.ability.can('update', 'Contact')) {
+      throw AppError.forbidden('Your role may not edit contacts');
+    }
+    await this.loadContact(ctx, id);
+
+    const amount = dec(body.amount);
+    const key = { companyId_contactId: { companyId: ctx.companyId, contactId: id } };
+    if (amount.isZero()) {
+      await this.prisma.contactOpeningBalance.deleteMany({
+        where: { companyId: ctx.companyId, contactId: id },
+      });
+    } else {
+      const data = { amount: toPrismaDecimal(amount.toFixed(2)), asOf: new Date(body.asOf), note: body.note || null };
+      await this.prisma.contactOpeningBalance.upsert({
+        where: key,
+        create: { companyId: ctx.companyId, contactId: id, ...data },
+        update: data,
+      });
+    }
+    return this.get(ctx, id);
+  }
+
   private mapContact(
     row: Prisma.ContactGetPayload<{ include: typeof contactInclude }>,
-    balances?: { outstanding: string; overdue: string },
+    balances?: Balances,
   ): Contact {
     return {
       id: row.id,
@@ -541,7 +676,11 @@ export class ContactsService {
         phone: person.phone,
       })),
       ...(balances
-        ? { outstandingBalance: balances.outstanding, overdueBalance: balances.overdue }
+        ? {
+            outstandingBalance: balances.outstanding,
+            overdueBalance: balances.overdue,
+            openingBalance: balances.opening,
+          }
         : {}),
     };
   }

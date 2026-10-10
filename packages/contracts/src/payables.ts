@@ -8,7 +8,7 @@ export const payablesQuery = z.object({
 
 /** One unpaid bill: a purchase invoice or an expense. */
 export const payableItem = z.object({
-  source: z.enum(['DOCUMENT', 'EXPENSE']),
+  source: z.enum(['DOCUMENT', 'EXPENSE', 'OPENING']),
   id: uuid,
   /** Supplier, null for an expense that has none. */
   contactId: uuid.nullable(),

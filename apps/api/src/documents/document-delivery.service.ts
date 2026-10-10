@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { RequestContext } from '../tenancy/request-context';
 import { MailService } from '../mail/mail.service';
 import { PdfService, type RenderedPdf } from '../pdf/pdf.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 
 /**
  * Getting a document out of the system: as a PDF, or as an email with that
@@ -21,6 +22,7 @@ export class DocumentDeliveryService {
     private readonly prisma: PrismaService,
     private readonly pdf: PdfService,
     private readonly mail: MailService,
+    private readonly whatsapp: WhatsappService,
   ) {}
 
   async renderPdf(
@@ -87,6 +89,57 @@ export class DocumentDeliveryService {
     });
   }
 
+  /**
+   * Send the document to the customer on WhatsApp, with the PDF attached.
+   * Like email, a successful send is what moves Validated to Sent.
+   */
+  async sendByWhatsapp(
+    ctx: RequestContext,
+    documentId: string,
+    body: {
+      phone: string;
+      message: string;
+      locale?: Locale | null;
+      attachPdf: boolean;
+      savePhoneToContact: boolean;
+    },
+  ): Promise<void> {
+    const document = await this.assertCanSend(ctx, documentId);
+
+    if (document.lifecycle === 'DRAFT') {
+      throw AppError.conflict(
+        'NOT_VALIDATED',
+        'Validate the document before sending it, so it carries a real number',
+      );
+    }
+
+    // Parse first so a typo fails before a PDF is rendered.
+    const phone = this.whatsapp.parsePhone(body.phone);
+
+    const file = body.attachPdf
+      ? await (async () => {
+          const { bytes, fileName } = await this.pdf.renderBytes(ctx, documentId, {
+            locale: body.locale ?? undefined,
+          });
+          return { bytes, filename: fileName, mimetype: 'application/pdf' };
+        })()
+      : undefined;
+
+    await this.whatsapp.send(phone, body.message, file);
+
+    await this.prisma.document.update({
+      where: { id: documentId },
+      data: { lifecycle: 'SENT', sentAt: document.sentAt ?? new Date() },
+    });
+
+    if (body.savePhoneToContact) {
+      await this.prisma.contact.updateMany({
+        where: { id: document.contactId, phone: null },
+        data: { phone: body.phone.trim() },
+      });
+    }
+  }
+
   private async assertCanRead(ctx: RequestContext, documentId: string) {
     const document = await this.load(ctx, documentId);
     if (
@@ -136,6 +189,7 @@ export class DocumentDeliveryService {
         lifecycle: true,
         createdById: true,
         sentAt: true,
+        contactId: true,
       },
     });
     if (!document) throw AppError.notFound('Document', documentId);

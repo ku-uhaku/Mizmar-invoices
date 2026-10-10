@@ -6,8 +6,10 @@ import type { receivablesSchemas } from '@mizmar/contracts';
 import type { z } from 'zod';
 import { AppError } from '../common/app-error';
 import { moneyOut } from '../common/util/decimal';
+import { openingExposure } from '../contacts/opening';
 import { MailService } from '../mail/mail.service';
 import { PdfService } from '../pdf/pdf.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestContext } from '../tenancy/request-context';
 import {
@@ -42,7 +44,7 @@ const invoiceSelect = {
   totalInclVat: true,
   paidAmount: true,
   contact: {
-    select: { displayName: true, email: true, defaultLocale: true },
+    select: { id: true, displayName: true, email: true, phone: true, defaultLocale: true },
   },
   reminders: {
     orderBy: { sentAt: 'desc' },
@@ -60,6 +62,7 @@ export class ReceivablesService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly pdf: PdfService,
+    private readonly whatsapp: WhatsappService,
   ) {}
 
   // =========================================================================
@@ -103,6 +106,7 @@ export class ReceivablesService {
         contactId: row.contactId,
         contactName: row.contact.displayName,
         contactEmail: row.contact.email,
+        contactPhone: row.contact.phone?.trim() || null,
         issueDate: row.issueDate.toISOString().slice(0, 10),
         dueDate: row.dueDate.toISOString().slice(0, 10),
         currency: row.currency,
@@ -148,6 +152,15 @@ export class ReceivablesService {
       dueDate: row.dueDate,
       outstanding: outstandingOf(row).toFixed(),
     }));
+    // A debt carried over from before the app is due from its opening date.
+    for (const opening of await openingExposure(this.prisma, ctx.companyId, 'CLIENT')) {
+      inputs.push({
+        contactId: opening.contactId,
+        contactName: opening.contactName,
+        dueDate: opening.asOf,
+        outstanding: opening.outstanding,
+      });
+    }
 
     const { rows: ageingRows, totals } = buildAgeing(inputs, now);
     return { currency, asOf: now.toISOString().slice(0, 10), rows: ageingRows, totals };
@@ -186,6 +199,7 @@ export class ReceivablesService {
       if (!found.has(id)) {
         results.push({
           documentId: id,
+          contactId: null,
           number: null,
           outcome: 'SKIPPED_NOT_OVERDUE',
           level: null,
@@ -200,6 +214,7 @@ export class ReceivablesService {
       if (!isOverdue) {
         results.push({
           documentId: row.id,
+          contactId: row.contactId,
           number: row.number,
           outcome: 'SKIPPED_NOT_OVERDUE',
           level: null,
@@ -210,6 +225,7 @@ export class ReceivablesService {
       if (!body.force && isWithinCooldown(row.reminders[0]?.sentAt ?? null, now)) {
         results.push({
           documentId: row.id,
+          contactId: row.contactId,
           number: row.number,
           outcome: 'SKIPPED_RECENT',
           level: null,
@@ -223,20 +239,38 @@ export class ReceivablesService {
     }
 
     let sent = 0;
+    const wantsEmail = body.channels.includes('EMAIL');
+    const wantsWhatsapp = body.channels.includes('WHATSAPP');
+
+    if (wantsWhatsapp && !this.whatsapp.isConfigured()) {
+      throw AppError.conflict('WHATSAPP_NOT_CONFIGURED', 'WhatsApp is not configured on this server');
+    }
 
     for (const invoices of byContact.values()) {
       const contact = invoices[0]!.contact;
+      const typedPhone = body.phones?.[contact.id]?.trim();
+      const phone = contact.phone?.trim() || typedPhone || null;
 
-      if (!contact.email) {
+      const missing = (outcome: 'NO_EMAIL' | 'NO_PHONE', message: string) => {
         for (const invoice of invoices) {
           results.push({
             documentId: invoice.id,
+            contactId: contact.id,
             number: invoice.number,
-            outcome: 'NO_EMAIL',
+            outcome,
             level: null,
-            message: 'The contact has no email address',
+            message,
           });
         }
+      };
+
+      // A channel the contact cannot be reached on is reported, not guessed at;
+      // the contact is skipped only when none of the requested channels work.
+      const canEmail = wantsEmail && !!contact.email;
+      const canWhatsapp = wantsWhatsapp && !!phone;
+      if (!canEmail && !canWhatsapp) {
+        if (wantsWhatsapp && !wantsEmail) missing('NO_PHONE', 'The contact has no phone number');
+        else missing('NO_EMAIL', 'The contact has no email address');
         continue;
       }
 
@@ -263,49 +297,91 @@ export class ReceivablesService {
         })),
       });
 
-      try {
-        const attachments = body.attachPdf ? await this.attachments(ctx, invoices, locale) : undefined;
-        await this.mail.send({
-          to: [contact.email],
-          subject: message.subject,
-          body: message.body,
-          attachments,
-          replyTo: ctx.email,
-        });
-      } catch (error) {
-        this.logger.warn(`Reminder to ${contact.email} failed: ${String(error)}`);
+      const delivered: Array<{ channel: 'EMAIL' | 'WHATSAPP'; recipient: string }> = [];
+      let failure: string | null = null;
+
+      const attachments = body.attachPdf
+        ? await this.attachments(ctx, invoices, locale)
+        : undefined;
+
+      if (canEmail) {
+        try {
+          await this.mail.send({
+            to: [contact.email!],
+            subject: message.subject,
+            body: message.body,
+            attachments,
+            replyTo: ctx.email,
+          });
+          delivered.push({ channel: 'EMAIL', recipient: contact.email! });
+        } catch (error) {
+          this.logger.warn(`Reminder to ${contact.email} failed: ${String(error)}`);
+          failure = error instanceof Error ? error.message : 'Email could not be sent';
+        }
+      }
+
+      if (canWhatsapp) {
+        try {
+          // The text goes first; each invoice PDF follows as its own document.
+          await this.whatsapp.sendText(phone!, `${message.subject}\n\n${message.body}`);
+          for (const file of attachments ?? []) {
+            await this.whatsapp.sendDocument(phone!, {
+              bytes: file.content,
+              filename: file.filename,
+              mimetype: file.contentType,
+            });
+          }
+          delivered.push({ channel: 'WHATSAPP', recipient: phone! });
+          // A number typed in for this reminder is kept for next time.
+          if (!contact.phone && typedPhone) {
+            await this.prisma.contact.updateMany({
+              where: { id: contact.id, phone: null },
+              data: { phone: typedPhone },
+            });
+          }
+        } catch (error) {
+          this.logger.warn(`WhatsApp reminder to ${phone} failed: ${String(error)}`);
+          failure = error instanceof Error ? error.message : 'WhatsApp could not be sent';
+        }
+      }
+
+      if (delivered.length === 0) {
         for (const invoice of invoices) {
           results.push({
             documentId: invoice.id,
+            contactId: contact.id,
             number: invoice.number,
             outcome: 'FAILED',
             level: null,
-            message: error instanceof Error ? error.message : 'Email could not be sent',
+            message: failure ?? 'Reminder could not be sent',
           });
         }
         continue;
       }
 
       await this.prisma.paymentReminder.createMany({
-        data: invoices.map((invoice) => ({
-          companyId: ctx.companyId,
-          documentId: invoice.id,
-          sentById: ctx.userId,
-          channel: 'EMAIL' as const,
-          level: reminderLevel(invoice.reminders.length),
-          recipient: contact.email,
-          sentAt: now,
-        })),
+        data: invoices.flatMap((invoice) =>
+          delivered.map((d) => ({
+            companyId: ctx.companyId,
+            documentId: invoice.id,
+            sentById: ctx.userId,
+            channel: d.channel,
+            level: reminderLevel(invoice.reminders.length),
+            recipient: d.recipient,
+            sentAt: now,
+          })),
+        ),
       });
 
       for (const invoice of invoices) {
         sent += 1;
         results.push({
           documentId: invoice.id,
+          contactId: contact.id,
           number: invoice.number,
           outcome: 'SENT',
           level: reminderLevel(invoice.reminders.length),
-          message: null,
+          message: failure,
         });
       }
     }

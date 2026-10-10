@@ -121,4 +121,11 @@ export const EN_SETTINGS: Record<string, string> = {
   "Créer": "Create",
   "Code": "Code",
   "Court, utilisé dans la numérotation (ex. MZM)": "Short, used in numbering (e.g. MZM)",
+  "Envoi des documents et relances aux clients via la passerelle OpenWA": "Sending documents and reminders to customers through the OpenWA gateway",
+  "Connexion WhatsApp": "Connection",
+  "WhatsApp n’est pas configuré. Renseignez OPENWA_URL, OPENWA_API_KEY et OPENWA_SESSION_ID dans le fichier .env puis redémarrez l’API.": "WhatsApp is not configured. Set OPENWA_URL, OPENWA_API_KEY and OPENWA_SESSION_ID in the .env file, then restart the API.",
+  "Connecté": "Connected",
+  "Scannez ce code depuis WhatsApp › Appareils connectés › Connecter un appareil.": "Scan this code from WhatsApp › Linked devices › Link a device.",
+  "La session n’est pas prête. Démarrez-la depuis le tableau de bord OpenWA.": "The session is not ready. Start it from the OpenWA dashboard.",
+  "Passerelle non officielle : utilisez un numéro dédié, sinon le numéro peut être restreint par WhatsApp.": "Unofficial gateway: use a dedicated number, or WhatsApp may restrict it.",
 };

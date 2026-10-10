@@ -91,4 +91,10 @@ export const AR_RECEIVABLES: Record<string, string> = {
   Du: 'من',
   Au: 'إلى',
   'Exporter en CSV': 'تصدير CSV',
+  "Aussi par WhatsApp": "عبر واتساب أيضًا",
+  "Pas de numéro WhatsApp": "لا يوجد رقم واتساب",
+  "{n} client(s) sans numéro WhatsApp": "{n} عميل بدون رقم واتساب",
+  "Numéros WhatsApp manquants": "أرقام واتساب مفقودة",
+  "Saisissez le numéro de ces clients ; il sera enregistré sur leur fiche.": "أدخل أرقام هؤلاء العملاء؛ سيتم حفظها في بطاقاتهم.",
+  "Les clients laissés vides recevront seulement l’e-mail.": "العملاء الذين تُركت أرقامهم فارغة سيتلقون البريد الإلكتروني فقط.",
 };

@@ -48,6 +48,12 @@ export const envSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   MAIL_FROM: z.string().default('Mizmar <no-reply@mizmar.local>'),
 
+  // WhatsApp through a self-hosted OpenWA gateway. All three must be set for
+  // WhatsApp sending to be enabled; left empty, the feature is simply off.
+  OPENWA_URL: z.string().url().optional().or(z.literal('').transform(() => undefined)),
+  OPENWA_API_KEY: z.string().optional(),
+  OPENWA_SESSION_ID: z.string().optional(),
+
   // Set to false to stop the recurring-invoice scheduler (tests, local dev).
   RECURRING_ENABLED: booleanish.default(true),
 });
