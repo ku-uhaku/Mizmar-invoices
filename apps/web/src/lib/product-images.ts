@@ -53,3 +53,25 @@ export function reorderProductImages(productId: string, imageIds: string[]): Pro
 export function deleteProductImage(productId: string, imageId: string): Promise<GalleryImage[]> {
   return call(`/products/${productId}/images/${imageId}`, { method: 'DELETE' });
 }
+
+/** Logos are small; the API enforces the same limit. */
+export const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+
+export async function uploadCompanyLogo(companyId: string, file: File): Promise<void> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const response = await fetch(`/api/proxy/api/v1/companies/${companyId}/logo`, {
+    method: 'POST',
+    body: form,
+    cache: 'no-store',
+  });
+  if (!response.ok) throw await failure(response);
+}
+
+export async function deleteCompanyLogo(companyId: string): Promise<void> {
+  const response = await fetch(`/api/proxy/api/v1/companies/${companyId}/logo`, {
+    method: 'DELETE',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw await failure(response);
+}

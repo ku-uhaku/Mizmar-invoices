@@ -12,6 +12,10 @@ describe('normalizePhone', () => {
     expect(normalizePhone('0033 6 12 34 56 78')).toBe('33612345678');
   });
 
+  it('drops the trunk zero written after the country code', () => {
+    expect(normalizePhone('+212 (0)6 12 34 56 78')).toBe('212612345678');
+  });
+
   it('rejects numbers that cannot be real', () => {
     expect(normalizePhone('')).toBeNull();
     expect(normalizePhone('abc')).toBeNull();

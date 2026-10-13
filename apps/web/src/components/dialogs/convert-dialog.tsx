@@ -145,6 +145,14 @@ export function ConvertDialog({
         <div className="space-y-4">
           <ErrorNote>{error}</ErrorNote>
 
+          {options.data?.lines.every((line) => Number(line.remaining) <= 0) && (
+            <ErrorNote>
+              {t(
+                'Toutes les lignes ont déjà été reprises par un document en aval (brouillons inclus). Supprimez ou annulez ce document pour libérer les quantités.',
+              )}
+            </ErrorNote>
+          )}
+
           <div className="overflow-hidden rounded-xl border border-border">
             <Table>
               <thead>

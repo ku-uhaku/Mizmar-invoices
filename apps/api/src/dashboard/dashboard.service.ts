@@ -20,7 +20,7 @@ export class DashboardService {
     query: { from?: string; to?: string },
   ): Promise<DashboardResponse> {
     const now = new Date();
-    const to = query.to ? new Date(query.to) : endOfDay(now);
+    const to = query.to ? endOfDay(new Date(query.to)) : endOfDay(now);
     // Defaults to the current month, which is the window a daily standup uses.
     const from = query.from
       ? new Date(query.from)
@@ -28,6 +28,9 @@ export class DashboardService {
     const todayStart = startOfDay(now);
     const previousTo = new Date(from.getTime() - 1);
     const previousFrom = new Date(previousTo.getTime() - (to.getTime() - from.getTime()));
+    // The trend follows the selected range, but never fewer than a week (a single
+    // day is not a trend) nor more than a year.
+    const trendDays = Math.min(366, Math.max(7, Math.round((to.getTime() - from.getTime()) / DAY_MS) + 1));
     // Five full months before the current one, plus the current month so far.
     const monthsStart = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() - 5, 1));
 
@@ -128,7 +131,7 @@ export class DashboardService {
         by: ['issueDate'],
         where: {
           ...liveSales,
-          issueDate: { gte: new Date(to.getTime() - 29 * DAY_MS), lte: to },
+          issueDate: { gte: new Date(to.getTime() - (trendDays - 1) * DAY_MS), lte: to },
         },
         _sum: { totalExclVat: true },
       }),
@@ -229,7 +232,7 @@ export class DashboardService {
           companyId: ctx.companyId,
           direction: 'INBOUND',
           status: { notIn: ['BOUNCED', 'CANCELLED'] },
-          paidAt: { gte: new Date(to.getTime() - 29 * DAY_MS), lte: to },
+          paidAt: { gte: new Date(to.getTime() - (trendDays - 1) * DAY_MS), lte: to },
         },
         select: { paidAt: true, amount: true },
       }),
@@ -306,7 +309,7 @@ export class DashboardService {
       ]),
     );
     const salesTrend: Array<{ date: string; total: string }> = [];
-    for (let offset = 29; offset >= 0; offset -= 1) {
+    for (let offset = trendDays - 1; offset >= 0; offset -= 1) {
       const day = new Date(to.getTime() - offset * DAY_MS).toISOString().slice(0, 10);
       salesTrend.push({ date: day, total: moneyOut(trendByDay.get(day) ?? 0) });
     }

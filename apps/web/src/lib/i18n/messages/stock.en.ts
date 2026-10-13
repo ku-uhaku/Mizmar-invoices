@@ -23,7 +23,6 @@ export const EN_STOCK: Record<string, string> = {
   'Aucun stock pour l’instant': 'No stock yet',
   'Aucun transfert pour l’instant': 'No transfers yet',
   'Aucune ligne de stock ne correspond à ces filtres. Essayez d’en retirer un.': 'No stock line matches these filters. Try removing one.',
-  'Catalogue': 'Catalog',
   'Catégorie': 'Category',
   'Chaque mouvement, son document, son motif et son auteur': 'Every movement with its document, reason and author',
   'Chaque transfert produit une sortie et une entrée': 'Each transfer creates one outbound and one inbound movement',

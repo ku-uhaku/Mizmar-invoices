@@ -15,7 +15,7 @@ export const EN: Record<string, string> = {
   'Commandes fournisseur': 'Purchase orders',
   'Bons de réception': 'Goods receipts',
   "Factures d'achat": 'Purchase invoices',
-  Catalogue: 'Catalog',
+  'Produits & services': 'Products & services',
   'Clients & fournisseurs': 'Clients & suppliers',
   Paramètres: 'Settings',
   'Modèles de document': 'Document templates',

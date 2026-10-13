@@ -40,6 +40,8 @@ export const companySummary = z.object({
   id: uuid,
   code: z.string(),
   name: z.string(),
+  /** Relative API path of the company logo, or null when none was uploaded. */
+  logoUrl: z.string().nullable(),
   defaultCurrency: z.string(),
   defaultLocale: localeEnum,
   posEnabled: z.boolean(),

@@ -3,13 +3,19 @@
 import clsx from 'clsx';
 import Link from 'next/link';
 import {
+  Children,
+  Fragment,
   createContext,
   useContext,
+  isValidElement,
   useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type ButtonHTMLAttributes,
+  type ChangeEvent,
   type InputHTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
@@ -284,16 +290,173 @@ export function NumberInput({ className, ...rest }: InputHTMLAttributes<HTMLInpu
   );
 }
 
-export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+interface FlatOption {
+  value: string;
+  label: string;
+  disabled: boolean;
+}
+
+/** Flattens <option> children (fragments, arrays, mapped lists) into plain data. */
+function flattenOptions(children: ReactNode, out: FlatOption[] = []): FlatOption[] {
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child)) return;
+    const props = child.props as { value?: unknown; disabled?: boolean; children?: ReactNode };
+    if (child.type === Fragment || child.type === 'optgroup') {
+      flattenOptions(props.children, out);
+    } else if (child.type === 'option') {
+      const label = Children.toArray(props.children).join('');
+      out.push({
+        value: props.value === undefined ? label : String(props.value),
+        label,
+        disabled: Boolean(props.disabled),
+      });
+    }
+  });
+  return out;
+}
+
+/**
+ * Drop-in replacement for a native <select> that is always searchable.
+ * Keeps the native API (`value`, `onChange(event)`, <option> children) so every
+ * existing call site gets a type-to-filter dropdown without changes.
+ */
+export function Select({
+  className,
+  children,
+  value,
+  onChange,
+  disabled,
+  name,
+  id,
+  'aria-label': ariaLabel,
+}: SelectHTMLAttributes<HTMLSelectElement>) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState('');
+  const [highlighted, setHighlighted] = useState(0);
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const options = flattenOptions(children);
+  const current = String(value ?? '');
+  const selected = options.find((option) => option.value === current) ?? null;
+  const needle = term.trim().toLowerCase();
+  const items = options.filter((option) => !needle || option.label.toLowerCase().includes(needle));
+
+  useEffect(() => setHighlighted(0), [needle, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    inputRef.current?.focus();
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  function close() {
+    setOpen(false);
+    setTerm('');
+  }
+
+  function pick(option: FlatOption) {
+    if (option.disabled) return;
+    const target = { value: option.value, name: name ?? '' };
+    onChange?.({ target, currentTarget: target } as unknown as ChangeEvent<HTMLSelectElement>);
+    close();
+  }
+
+  function onKeyDown(event: ReactKeyboardEvent) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlighted((index) => Math.min(index + 1, items.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlighted((index) => Math.max(index - 1, 0));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const option = items[highlighted];
+      if (option) pick(option);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    } else if (event.key === 'Tab') {
+      close();
+    }
+  }
+
   return (
-    <span className="relative block">
-      <select {...rest} className={clsx(CONTROL, 'appearance-none pe-9', className)}>
-        {children}
-      </select>
+    <span ref={rootRef} className="relative block">
+      <button
+        type="button"
+        id={id}
+        disabled={disabled}
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((state) => !state)}
+        onKeyDown={(event) => {
+          if (!open && (event.key === 'ArrowDown' || event.key === 'Enter')) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className={clsx(CONTROL, 'flex items-center pe-9 text-start', className)}
+      >
+        <span className={clsx('truncate', !selected?.label && 'text-ink-subtle')}>
+          {selected?.label || '—'}
+        </span>
+      </button>
       <Icon
         name="chevronDown"
         className="pointer-events-none absolute end-3 top-1/2 size-4 -translate-y-1/2 text-ink-subtle"
       />
+
+      {open && (
+        <div className="absolute z-40 mt-1 w-full min-w-48 rounded-xl border border-border bg-surface p-1 shadow-(--shadow-pop)">
+          <div className="relative p-1">
+            <input
+              ref={inputRef}
+              value={term}
+              onChange={(event) => setTerm(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={t('Rechercher…')}
+              className="h-8 w-full rounded-lg border border-border-strong bg-surface px-3 pe-8 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand/20"
+            />
+            <Icon
+              name="search"
+              className="pointer-events-none absolute end-4 top-1/2 size-3.5 -translate-y-1/2 text-ink-subtle"
+            />
+          </div>
+          <ul role="listbox" className="max-h-64 overflow-y-auto">
+            {items.length === 0 && (
+              <li className="px-3 py-3 text-center text-sm text-ink-muted">{t('Aucun résultat')}</li>
+            )}
+            {items.map((option, index) => (
+              <li key={option.value} role="option" aria-selected={option.value === current}>
+                <button
+                  type="button"
+                  disabled={option.disabled}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setHighlighted(index)}
+                  onClick={() => pick(option)}
+                  className={clsx(
+                    'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm disabled:opacity-40',
+                    index === highlighted ? 'bg-brand-soft' : 'hover:bg-surface-muted',
+                    option.value === current ? 'font-semibold text-brand' : 'text-ink',
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate">{option.label || '—'}</span>
+                  {option.value === current && <Icon name="check" className="size-4" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </span>
   );
 }

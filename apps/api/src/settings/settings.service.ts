@@ -20,6 +20,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { RequestContext } from '../tenancy/request-context';
 import { hashPassword } from '../auth/password';
 import { PdfService } from '../pdf/pdf.service';
+import { assetUrl, sniffImage } from '../catalog/product-images.service';
+import { StorageService } from '../storage/storage.service';
 
 type Company = z.infer<typeof settingsSchemas.company>;
 type CompanyCreate = z.infer<typeof settingsSchemas.companyCreate>;
@@ -41,6 +43,7 @@ export class SettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdf: PdfService,
+    private readonly storage: StorageService,
   ) {}
 
   // =========================================================================
@@ -120,6 +123,61 @@ export class SettingsService {
       include: { logo: true },
     });
     return mapCompany(row);
+  }
+
+  /** Replace the company logo; the previous file is removed once the new one is in place. */
+  async setLogo(ctx: RequestContext, id: string, file: { fileName: string; bytes: Buffer }): Promise<Company> {
+    const current = await this.loadCompany(ctx, id);
+    if (!ctx.ability.can('update', 'Company')) {
+      throw AppError.forbidden('Your role may not change company settings');
+    }
+    if (file.bytes.byteLength > MAX_LOGO_BYTES) {
+      throw AppError.unprocessable('IMAGE_TOO_LARGE', 'The logo must be smaller than 2 MB');
+    }
+    const type = sniffImage(file.bytes);
+    if (!type) {
+      throw AppError.unprocessable('UNSUPPORTED_IMAGE', 'The logo must be a JPEG, PNG or WebP image');
+    }
+
+    const key = this.storage.buildKey(ctx.organizationId, 'LOGO', `logo.${type.extension}`);
+    await this.storage.put('assets', key, file.bytes, type.contentType);
+    const asset = await this.prisma.asset.create({
+      data: {
+        organizationId: ctx.organizationId,
+        kind: 'LOGO',
+        storageKey: key,
+        fileName: file.fileName.slice(0, 200),
+        contentType: type.contentType,
+        byteSize: file.bytes.byteLength,
+      },
+    });
+    const row = await this.prisma.company.update({
+      where: { id },
+      data: { logoAssetId: asset.id },
+      include: { logo: true },
+    });
+    await this.dropAsset(current.logo);
+    return mapCompany(row);
+  }
+
+  async removeLogo(ctx: RequestContext, id: string): Promise<Company> {
+    const current = await this.loadCompany(ctx, id);
+    if (!ctx.ability.can('update', 'Company')) {
+      throw AppError.forbidden('Your role may not change company settings');
+    }
+    const row = await this.prisma.company.update({
+      where: { id },
+      data: { logoAssetId: null },
+      include: { logo: true },
+    });
+    await this.dropAsset(current.logo);
+    return mapCompany(row);
+  }
+
+  private async dropAsset(asset: { id: string; storageKey: string } | null) {
+    if (!asset) return;
+    await this.prisma.asset.delete({ where: { id: asset.id } });
+    await this.storage.delete('assets', asset.storageKey);
   }
 
   // =========================================================================
@@ -712,6 +770,9 @@ export class SettingsService {
   }
 }
 
+/** A logo is shown small and embedded in every PDF, so a large file is a mistake. */
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+
 const MOROCCAN_VAT = [
   { rate: '20', label: 'TVA 20%', isDefault: true },
   { rate: '14', label: 'TVA 14%', isDefault: false },
@@ -793,7 +854,7 @@ function mapCompany(
     rib: row.rib,
     swift: row.swift,
     logoAssetId: row.logoAssetId,
-    logoUrl: null,
+    logoUrl: row.logoAssetId ? assetUrl(row.logoAssetId) : null,
     defaultCurrency: row.defaultCurrency,
     defaultLocale: row.defaultLocale,
     priceMode: row.priceMode,

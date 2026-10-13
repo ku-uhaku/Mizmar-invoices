@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { api, ApiError, unwrap } from '@/lib/api';
 import { Icon } from '@/components/icons';
+import { AttributeTypeDialog } from '@/components/attribute-type-dialog';
 import { FacetPicker, UnitPicker } from '@/components/catalog-pickers';
 import { ImportDialog } from '@/components/import-dialog';
 import { ProductImageManager, StagedImagePicker, Thumb } from '@/components/product-images';
@@ -21,6 +22,7 @@ import {
   Field,
   IconButton,
   Input,
+  LinkButton,
   NumberInput,
   PageHeader,
   SearchInput,
@@ -54,7 +56,6 @@ function CatalogScreen() {
   const [search, setSearch] = useState(params.get('search') ?? '');
   const [debounced, setDebounced] = useState(search);
   const [lowStockOnly, setLowStockOnly] = useState(false);
-  const [newOpen, setNewOpen] = useState(false);
   const [attributeOpen, setAttributeOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<ProductRow | null>(null);
@@ -90,7 +91,7 @@ function CatalogScreen() {
   return (
     <>
       <PageHeader
-        title={t('Catalogue')}
+        title={t('Produits & services')}
         subtitle={
           count === undefined
             ? t('Produits et variantes')
@@ -108,9 +109,9 @@ function CatalogScreen() {
             <Button onClick={() => setAttributeOpen(true)}>
               <Icon name="plus" /> {t('Nouvel attribut')}
             </Button>
-            <Button variant="primary" onClick={() => setNewOpen(true)}>
+            <LinkButton variant="primary" href="/products/new">
               <Icon name="plus" /> {t('Nouveau produit')}
-            </Button>
+            </LinkButton>
           </>
         }
       />
@@ -302,16 +303,15 @@ function CatalogScreen() {
             title={t('Aucun produit pour l’instant')}
             description={t('Créez votre premier produit : ses variantes et son stock apparaîtront ici.')}
             action={
-              <Button variant="primary" onClick={() => setNewOpen(true)}>
+              <LinkButton variant="primary" href="/products/new">
                 <Icon name="plus" /> {t('Nouveau produit')}
-              </Button>
+              </LinkButton>
             }
           />
         )}
       </Card>
 
       <ImportDialog kind="products" open={importOpen} onClose={() => setImportOpen(false)} />
-      <NewProductDialog open={newOpen} onClose={() => setNewOpen(false)} />
       {attributeOpen && <AttributeTypeDialog onClose={() => setAttributeOpen(false)} />}
       {editing && (
         <EditProductDialog key={editing.id} product={editing} onClose={() => setEditing(null)} />
@@ -326,282 +326,6 @@ export default function CatalogPage() {
     <Suspense fallback={<TableSkeleton />}>
       <CatalogScreen />
     </Suspense>
-  );
-}
-
-/**
- * Create a product by generating the cross-product of its attributes.
- *
- * The matrix is previewed server-side first, so the user deselects the
- * combinations that do not exist (there is no XXL in that colour) before
- * anything is written.
- */
-function NewProductDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const t = useT();
-  const queryClient = useQueryClient();
-  const [name, setName] = useState('');
-  const [reference, setReference] = useState('');
-  const [category, setCategory] = useState('');
-  const [brand, setBrand] = useState('');
-  const [unitId, setUnitId] = useState('');
-  const [vatRate, setVatRate] = useState('20');
-  const [sellingPrice, setSellingPrice] = useState('0');
-  const [costPrice, setCostPrice] = useState('0');
-  const [threshold, setThreshold] = useState('0');
-  const [selected, setSelected] = useState<Record<string, string[]>>({});
-  const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const attributes = useQuery({
-    queryKey: ['attribute-types'],
-    queryFn: async () => unwrap(await api.catalog.listAttributeTypes()),
-    enabled: open,
-  });
-
-  const dimensions = Object.entries(selected)
-    .filter(([, values]) => values.length > 0)
-    .map(([attributeTypeId, attributeValueIds]) => ({ attributeTypeId, attributeValueIds }));
-
-  const matrix = useQuery({
-    queryKey: ['variant-matrix', dimensions, reference, sellingPrice, costPrice, threshold],
-    queryFn: async () =>
-      unwrap(
-        await api.catalog.variantMatrix({
-          body: {
-            skuPrefix: reference || name.slice(0, 6),
-            dimensions,
-            defaults: { sellingPrice, costPrice, minStockThreshold: threshold },
-          },
-        }),
-      ),
-    enabled: open && dimensions.length > 0,
-  });
-
-  const combinations = (matrix.data?.combinations ?? []).filter(
-    (combination) => !excluded.has(combination.suggestedSku),
-  );
-
-  const create = useMutation({
-    mutationFn: async () => {
-      setError(null);
-      const variants =
-        combinations.length > 0
-          ? combinations.map((combination) => ({
-              sku: combination.suggestedSku,
-              attributeValueIds: combination.attributeValueIds,
-              sellingPrice,
-              costPrice,
-              minStockThreshold: threshold,
-              isActive: true,
-            }))
-          : // A simple product still gets exactly one variant, so stock and
-            // document lines have a single uniform shape.
-            [
-              {
-                sku: reference || name.toUpperCase().replace(/\s+/g, '-').slice(0, 24),
-                attributeValueIds: [],
-                sellingPrice,
-                costPrice,
-                minStockThreshold: threshold,
-                isActive: true,
-              },
-            ];
-
-      return unwrap(
-        await api.catalog.createProduct({
-          body: {
-            name,
-            reference: reference || undefined,
-            category: category || undefined,
-            brand: brand || undefined,
-            unitId: unitId || undefined,
-            defaultVatRate: vatRate,
-            isVariantManaged: combinations.length > 0,
-            isService: false,
-            attributeTypeIds: dimensions.map((dimension) => dimension.attributeTypeId),
-            variants,
-          },
-        }),
-      );
-    },
-    onSuccess: async (created) => {
-      // The product exists now, so the chosen photos can be attached to it.
-      if (photos.length > 0) {
-        try {
-          await uploadProductImages(created.id, photos);
-        } catch {
-          toast.error(t('Produit créé, mais les photos n’ont pas pu être envoyées. Ajoutez-les via « Modifier ».'));
-        }
-      }
-      void queryClient.invalidateQueries({ queryKey: ['products'] });
-      void queryClient.invalidateQueries({ queryKey: ['product-facets'] });
-      toast.success(t('Produit créé'));
-      setName('');
-      setReference('');
-      setSelected({});
-      setExcluded(new Set());
-      setPhotos([]);
-      onClose();
-    },
-    onError: (cause) => setError(cause instanceof ApiError ? cause.message : t('Création impossible')),
-  });
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      width="lg"
-      title={t('Nouveau produit')}
-      description={t('Choisissez les dimensions pour générer les variantes automatiquement.')}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button
-            variant="primary"
-            loading={create.isPending}
-            disabled={!name.trim()}
-            onClick={() => create.mutate()}
-          >
-            {combinations.length > 0 ? t('Créer {n} variante(s)', { n: combinations.length }) : t('Créer le produit')}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <ErrorNote>{error}</ErrorNote>
-
-        <StagedImagePicker files={photos} onChange={setPhotos} />
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t('Nom')} required>
-            <Input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
-          </Field>
-          <Field label={t('Référence / préfixe SKU')}>
-            <Input
-              value={reference}
-              onChange={(event) => setReference(event.target.value.toUpperCase())}
-            />
-          </Field>
-          <Field label={t('Catégorie')}>
-            <FacetPicker kind="categories" value={category} onChange={setCategory} />
-          </Field>
-          <Field label={t('Marque')}>
-            <FacetPicker kind="brands" value={brand} onChange={setBrand} />
-          </Field>
-          <Field label={t('Unité')}>
-            <UnitPicker value={unitId} onChange={setUnitId} />
-          </Field>
-          <Field label={t('TVA (%)')}>
-            <NumberInput value={vatRate} onChange={(event) => setVatRate(event.target.value)} />
-          </Field>
-          <Field label={t('Prix de vente HT')}>
-            <NumberInput
-              value={sellingPrice}
-              onChange={(event) => setSellingPrice(event.target.value)}
-            />
-          </Field>
-          <Field label={t('Prix d’achat')}>
-            <NumberInput value={costPrice} onChange={(event) => setCostPrice(event.target.value)} />
-          </Field>
-          <Field label={t('Seuil d’alerte')}>
-            <NumberInput value={threshold} onChange={(event) => setThreshold(event.target.value)} />
-          </Field>
-        </div>
-
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-            {t('Dimensions')}
-          </p>
-          <div className="space-y-3">
-            {attributes.data?.map((attribute) => (
-              <div key={attribute.id} className="rounded-lg border border-border p-3">
-                <p className="mb-2 text-sm font-medium text-ink">{attribute.name}</p>
-                <div className="flex flex-wrap gap-2">
-                  {attribute.values.map((value) => {
-                    const chosen = selected[attribute.id]?.includes(value.id) ?? false;
-                    return (
-                      <button
-                        key={value.id}
-                        type="button"
-                        onClick={() =>
-                          setSelected((current) => {
-                            const existing = current[attribute.id] ?? [];
-                            return {
-                              ...current,
-                              [attribute.id]: chosen
-                                ? existing.filter((id) => id !== value.id)
-                                : [...existing, value.id],
-                            };
-                          })
-                        }
-                        className={
-                          chosen
-                            ? 'rounded-lg border border-brand bg-brand-soft px-3 py-1.5 text-xs font-medium text-brand'
-                            : 'rounded-lg border border-border-strong px-3 py-1.5 text-xs text-ink-muted hover:bg-surface-muted'
-                        }
-                      >
-                        {value.colorHex && (
-                          <span
-                            className="me-1.5 inline-block size-2 rounded-full align-middle"
-                            style={{ background: value.colorHex }}
-                          />
-                        )}
-                        {value.value}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {matrix.data && matrix.data.combinations.length > 0 && (
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              {t('{n} variante(s) seront créées — décochez celles qui n’existent pas', { n: combinations.length })}
-            </p>
-            <div className="max-h-56 overflow-y-auto rounded-lg border border-border">
-              <Table className="text-xs">
-                <thead>
-                  <tr>
-                    <Th className="w-8" />
-                    <Th>{t('SKU')}</Th>
-                    <Th>{t('Déclinaison')}</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matrix.data.combinations.map((combination) => (
-                    <tr key={combination.suggestedSku}>
-                      <Td>
-                        <input
-                          type="checkbox"
-                          checked={!excluded.has(combination.suggestedSku)}
-                          onChange={(event) =>
-                            setExcluded((current) => {
-                              const next = new Set(current);
-                              if (event.target.checked) next.delete(combination.suggestedSku);
-                              else next.add(combination.suggestedSku);
-                              return next;
-                            })
-                          }
-                          className="size-3.5 rounded border-border-strong text-brand"
-                        />
-                      </Td>
-                      <Td className="font-medium">{combination.suggestedSku}</Td>
-                      <Td className="text-ink-muted">{combination.label}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
-          </div>
-        )}
-      </div>
-    </Dialog>
   );
 }
 
@@ -696,12 +420,6 @@ function EditProductDialog({ product, onClose }: { product: ProductRow; onClose:
           <Field label={t('Unité')}>
             <UnitPicker value={unitId} onChange={setUnitId} />
           </Field>
-          <Field label={t('Marque')}>
-            <FacetPicker kind="brands" value={brand} onChange={setBrand} />
-          </Field>
-          <Field label={t('Unité')}>
-            <UnitPicker value={unitId} onChange={setUnitId} />
-          </Field>
           <Field label={t('TVA (%)')}>
             <NumberInput value={vatRate} onChange={(event) => setVatRate(event.target.value)} />
           </Field>
@@ -753,129 +471,6 @@ function DeleteProductDialog({ product, onClose }: { product: ProductRow; onClos
       }
     >
       <></>
-    </Dialog>
-  );
-}
-
-/** Create a dimension (size, colour…) together with its values. */
-function AttributeTypeDialog({ onClose }: { onClose: () => void }) {
-  const t = useT();
-  const queryClient = useQueryClient();
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const [values, setValues] = useState<Array<{ value: string; colorHex: string }>>([
-    { value: '', colorHex: '' },
-  ]);
-  const [error, setError] = useState<string | null>(null);
-
-  const create = useMutation({
-    mutationFn: async () => {
-      setError(null);
-      const filled = values.filter((entry) => entry.value.trim());
-      return unwrap(
-        await api.catalog.createAttributeType({
-          body: {
-            code: code.trim().toUpperCase(),
-            name: name.trim(),
-            sortOrder: 0,
-            values: filled.map((entry, index) => ({
-              value: entry.value.trim(),
-              sortOrder: index,
-              ...(/^#[0-9a-fA-F]{6}$/.test(entry.colorHex) ? { colorHex: entry.colorHex } : {}),
-            })),
-          },
-        }),
-      );
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['attribute-types'] });
-      toast.success(t('Attribut créé'));
-      onClose();
-    },
-    onError: (cause) => setError(cause instanceof ApiError ? cause.message : t('Création impossible')),
-  });
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={t('Nouvel attribut')}
-      description={t('Une dimension de variante, par exemple la taille ou la couleur.')}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button
-            variant="primary"
-            loading={create.isPending}
-            disabled={!code.trim() || !name.trim()}
-            onClick={() => create.mutate()}
-          >
-            {t('Créer')}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <ErrorNote>{error}</ErrorNote>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t('Nom')} required>
-            <Input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
-          </Field>
-          <Field label={t('Code')} required>
-            <Input
-              value={code}
-              maxLength={40}
-              onChange={(event) => setCode(event.target.value.toUpperCase())}
-            />
-          </Field>
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('Valeurs')}</p>
-          <div className="space-y-2">
-            {values.map((entry, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Input
-                  aria-label={t('Valeur')}
-                  value={entry.value}
-                  onChange={(event) =>
-                    setValues((current) =>
-                      current.map((v, i) => (i === index ? { ...v, value: event.target.value } : v)),
-                    )
-                  }
-                />
-                <input
-                  type="color"
-                  aria-label={t('Couleur')}
-                  value={/^#[0-9a-fA-F]{6}$/.test(entry.colorHex) ? entry.colorHex : '#ffffff'}
-                  onChange={(event) =>
-                    setValues((current) =>
-                      current.map((v, i) => (i === index ? { ...v, colorHex: event.target.value } : v)),
-                    )
-                  }
-                  className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-border-strong bg-surface p-1"
-                />
-                <IconButton
-                  label={t('Retirer')}
-                  onClick={() => setValues((current) => current.filter((_, i) => i !== index))}
-                  className="hover:bg-danger-soft hover:text-danger"
-                >
-                  <Icon name="x" />
-                </IconButton>
-              </div>
-            ))}
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="mt-2"
-            onClick={() => setValues((current) => [...current, { value: '', colorHex: '' }])}
-          >
-            <Icon name="plus" /> {t('Ajouter une valeur')}
-          </Button>
-        </div>
-      </div>
     </Dialog>
   );
 }

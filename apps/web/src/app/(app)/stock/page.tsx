@@ -184,12 +184,12 @@ function StockScreen() {
                   return (
                     <tr
                       key={`${row.variantId}-${row.warehouseId}`}
-                      onClick={() => router.push(`/catalog?search=${encodeURIComponent(row.sku)}`)}
+                      onClick={() => router.push(`/products?search=${encodeURIComponent(row.sku)}`)}
                       className="cursor-pointer hover:bg-surface-muted/60"
                     >
                       <Td>
                         <Link
-                          href={`/catalog?search=${encodeURIComponent(row.sku)}`}
+                          href={`/products?search=${encodeURIComponent(row.sku)}`}
                           onClick={(event) => event.stopPropagation()}
                           className="font-semibold text-ink hover:text-brand"
                         >

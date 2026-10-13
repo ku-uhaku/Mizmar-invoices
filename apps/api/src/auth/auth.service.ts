@@ -12,6 +12,7 @@ import { generateRefreshToken, hashPassword, verifyPassword } from './password';
 import type { AccessTokenPayload } from './jwt.types';
 import type { RequestContext } from '../tenancy/request-context';
 import { MailService } from '../mail/mail.service';
+import { assetUrl } from '../catalog/product-images.service';
 import {
   buildResetUrl,
   generateResetToken,
@@ -278,6 +279,7 @@ export class AuthService {
         id: c.id,
         code: c.code,
         name: c.name,
+        logoUrl: c.logoAssetId ? assetUrl(c.logoAssetId) : null,
         defaultCurrency: c.defaultCurrency,
         defaultLocale: c.defaultLocale,
         posEnabled: c.posEnabled,
@@ -352,7 +354,7 @@ export class AuthService {
   private async resolveCompanies(
     organizationId: string,
     role: Role,
-    granted: Array<{ id: string; code: string; name: string; defaultCurrency: string; defaultLocale: 'EN' | 'FR' | 'AR'; posEnabled: boolean; posRequireSession: boolean; isActive: boolean }>,
+    granted: Array<{ id: string; code: string; name: string; logoAssetId: string | null; defaultCurrency: string; defaultLocale: 'EN' | 'FR' | 'AR'; posEnabled: boolean; posRequireSession: boolean; isActive: boolean }>,
   ) {
     // Owners and admins reach every company without needing explicit grants,
     // which keeps adding a new legal entity from locking its own admins out.

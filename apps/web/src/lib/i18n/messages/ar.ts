@@ -14,7 +14,7 @@ export const AR: Record<string, string> = {
   'Commandes fournisseur': 'طلبات الشراء',
   'Bons de réception': 'سندات الاستلام',
   "Factures d'achat": 'فواتير الشراء',
-  Catalogue: 'الكتالوج',
+  'Produits & services': 'المنتجات والخدمات',
   'Clients & fournisseurs': 'الزبناء والموردون',
   Paramètres: 'الإعدادات',
   'Modèles de document': 'قوالب المستندات',

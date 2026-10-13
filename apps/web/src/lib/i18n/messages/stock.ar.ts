@@ -23,7 +23,6 @@ export const AR_STOCK: Record<string, string> = {
   'Aucun stock pour l’instant': 'لا يوجد مخزون بعد',
   'Aucun transfert pour l’instant': 'لا توجد تحويلات بعد',
   'Aucune ligne de stock ne correspond à ces filtres. Essayez d’en retirer un.': 'لا يوجد سطر مخزون يطابق هذه المرشحات. جرّب إزالة أحدها.',
-  'Catalogue': 'الكتالوج',
   'Catégorie': 'الفئة',
   'Chaque mouvement, son document, son motif et son auteur': 'كل حركة مع مستندها وسببها ومنفذها',
   'Chaque transfert produit une sortie et une entrée': 'كل تحويل ينتج حركة خروج وحركة دخول',

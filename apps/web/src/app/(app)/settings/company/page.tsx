@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Company } from '@mizmar/contracts';
 import { Icon } from '@/components/icons';
 import {
@@ -21,6 +21,13 @@ import {
 import { api, ApiError, unwrap } from '@/lib/api';
 import { useT } from '@/lib/i18n/provider';
 import { activeCompanyId } from '@/lib/session-client';
+import {
+  assetSrc,
+  deleteCompanyLogo,
+  imageProblem,
+  MAX_LOGO_BYTES,
+  uploadCompanyLogo,
+} from '@/lib/product-images';
 
 /** Free-text company columns, edited as plain strings (empty means null). */
 const TEXT_KEYS = [
@@ -85,6 +92,35 @@ export default function CompanySettingsPage() {
   useEffect(() => {
     if (company.data) setForm(toForm(company.data));
   }, [company.data]);
+
+  const fileInput = useRef<HTMLInputElement>(null);
+  const logoChanged = () => {
+    void queryClient.invalidateQueries({ queryKey: ['company'] });
+    void queryClient.invalidateQueries({ queryKey: ['session'] });
+  };
+  const uploadLogo = useMutation({
+    mutationFn: async (file: File) => {
+      const problem = imageProblem(file);
+      if (problem === 'type') throw new Error(t('Choisissez une image JPEG, PNG ou WebP'));
+      if (problem === 'size' || file.size > MAX_LOGO_BYTES) throw new Error(t('Le logo doit faire moins de 2 Mo'));
+      await uploadCompanyLogo(id!, file);
+    },
+    onSuccess: () => {
+      toast.success(t('Logo enregistré'));
+      logoChanged();
+    },
+    onError: (cause) =>
+      setError(cause instanceof Error ? cause.message : t('Enregistrement impossible')),
+  });
+  const removeLogo = useMutation({
+    mutationFn: () => deleteCompanyLogo(id!),
+    onSuccess: () => {
+      toast.success(t('Logo supprimé'));
+      logoChanged();
+    },
+    onError: (cause) =>
+      setError(cause instanceof Error ? cause.message : t('Enregistrement impossible')),
+  });
 
   const save = useMutation({
     mutationFn: async () => {
@@ -199,16 +235,42 @@ export default function CompanySettingsPage() {
             {text('shareCapital', t('Capital social'))}
             <div className="sm:col-span-2">
               <p className="mb-1.5 text-xs font-medium text-ink-muted">{t('Logo')}</p>
-              {company.data?.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={company.data.logoUrl} alt={t('Logo')} className="h-16 rounded border border-border" />
-              ) : (
-                <p className="text-sm text-ink-subtle">
-                  {company.data?.logoAssetId
-                    ? t('Un logo est enregistré ; son aperçu n’est pas encore disponible.')
-                    : t('Aucun logo. Le téléversement n’est pas encore pris en charge par l’API.')}
-                </p>
-              )}
+              <div className="flex flex-wrap items-center gap-4">
+                {company.data?.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={assetSrc(company.data.logoUrl)!}
+                    alt={t('Logo')}
+                    className="h-16 max-w-48 rounded border border-border bg-white object-contain p-1"
+                  />
+                ) : (
+                  <p className="text-sm text-ink-subtle">{t('Aucun logo')}</p>
+                )}
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) {
+                      setError(null);
+                      uploadLogo.mutate(file);
+                    }
+                  }}
+                />
+                <Button loading={uploadLogo.isPending} onClick={() => fileInput.current?.click()}>
+                  <Icon name="upload" />
+                  {company.data?.logoUrl ? t('Remplacer le logo') : t('Téléverser un logo')}
+                </Button>
+                {company.data?.logoUrl && (
+                  <Button loading={removeLogo.isPending} onClick={() => removeLogo.mutate()}>
+                    {t('Supprimer le logo')}
+                  </Button>
+                )}
+              </div>
+              <p className="mt-1.5 text-xs text-ink-subtle">{t('JPEG, PNG ou WebP, 2 Mo maximum')}</p>
             </div>
           </div>
         </Card>

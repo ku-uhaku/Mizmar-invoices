@@ -2,9 +2,11 @@
 
 import clsx from 'clsx';
 import Link from 'next/link';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api';
 import { useLocale, useT } from '@/lib/i18n/provider';
+import { DateRangeFilter, rangeFor, type DateRange } from '@/components/date-range-filter';
 import { Icon, type IconName } from '@/components/icons';
 import { AgingChart, MonthlyChart, RankBars, SalesTrendChart } from '@/components/dashboard-charts';
 import {
@@ -94,9 +96,12 @@ function DashboardSkeleton() {
 export default function DashboardPage() {
   const t = useT();
   const locale = useLocale();
+  const [range, setRange] = useState<DateRange>(() => rangeFor('month'));
   const { data, isPending, error } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: async () => unwrap(await api.dashboard.get({ query: {} })),
+    queryKey: ['dashboard', range.from, range.to],
+    queryFn: async () =>
+      unwrap(await api.dashboard.get({ query: { from: range.from, to: range.to } })),
+    placeholderData: (previous) => previous,
   });
   const session = useQuery({
     queryKey: ['session'],
@@ -200,6 +205,13 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <DateRangeFilter value={range} onChange={setRange} />
+        <p className="tabular text-sm text-ink-muted">
+          {range.from === range.to ? date(range.from) : `${date(range.from)} → ${date(range.to)}`}
+        </p>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
           icon="trending"
@@ -209,7 +221,7 @@ export default function DashboardPage() {
         />
         <StatCard
           icon="invoice"
-          label={t('Ventes du mois')}
+          label={t('Ventes de la période')}
           value={money(data.sales.invoicedPeriod, currency)}
           hint={
             <>
@@ -256,7 +268,7 @@ export default function DashboardPage() {
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
-            title={t('Ventes sur 30 jours')}
+            title={t('Ventes sur la période')}
             description={t('Total HT facturé et encaissements par jour')}
             actions={
               hasSales && (
@@ -370,7 +382,7 @@ export default function DashboardPage() {
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader title={t('Meilleurs clients du mois')} description={t('Classés par total HT facturé')} />
+          <CardHeader title={t('Meilleurs clients de la période')} description={t('Classés par total HT facturé')} />
           {data.topClients.length === 0 ? (
             <EmptyState icon="users" title={t('Pas encore de clients facturés')} description={t('Le classement apparaît dès la première facture.')} />
           ) : (
@@ -386,7 +398,7 @@ export default function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader title={t('Meilleurs produits du mois')} description={t('Classés par total HT vendu')} />
+          <CardHeader title={t('Meilleurs produits de la période')} description={t('Classés par total HT vendu')} />
           {data.topProducts.length === 0 ? (
             <EmptyState icon="box" title={t('Pas encore de ventes')} description={t('Les articles les plus vendus apparaîtront ici.')} />
           ) : (

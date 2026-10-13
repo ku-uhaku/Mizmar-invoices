@@ -13,6 +13,7 @@ import { useLocale, useT } from '@/lib/i18n/provider';
 import { Icon, type IconName } from './icons';
 import { Avatar, IconButton } from './ui';
 import { usePosSettings } from '@/lib/use-pos';
+import { assetSrc } from '@/lib/product-images';
 
 interface NavItem {
   href: string;
@@ -66,8 +67,8 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
   {
     group: 'Données',
     items: [
-      { href: '/catalog', label: 'Catalogue', icon: 'tag' },
-      { href: '/catalog/labels', label: 'Étiquettes code-barres', icon: 'printer' },
+      { href: '/products', label: 'Produits & services', icon: 'tag' },
+      { href: '/products/labels', label: 'Étiquettes code-barres', icon: 'printer' },
       { href: '/contacts', label: 'Clients & fournisseurs', icon: 'users' },
     ],
   },
@@ -160,6 +161,30 @@ function activeHref(items: NavItem[], pathname: string, type: string | null): st
 
 const COLLAPSED_KEY = 'nav-collapsed';
 
+/**
+ * The product's own mark, served from apps/web/public/logo.png. Until that file
+ * exists (or if it fails to load) the generated star keeps the sidebar intact.
+ */
+function AppLogo() {
+  const [missing, setMissing] = useState(false);
+  if (missing) {
+    return (
+      <div className="star-mark flex size-11 shrink-0 items-center justify-center text-base font-bold text-white drop-shadow-sm">
+        M
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/logo.png"
+      alt="Mizmar"
+      onError={() => setMissing(true)}
+      className="size-11 shrink-0 rounded-xl object-contain"
+    />
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <Suspense fallback={null}>
@@ -247,9 +272,7 @@ function Shell({ children }: { children: ReactNode }) {
       >
         <div aria-hidden className="zellige-pattern absolute inset-x-0 top-0 h-56" />
         <div className="relative flex items-center gap-3 px-5 pb-4 pt-5">
-          <div className="star-mark flex size-11 shrink-0 items-center justify-center text-base font-bold text-white drop-shadow-sm">
-            M
-          </div>
+          <AppLogo />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-semibold tracking-tight">Mizmar</p>
             <p className="truncate text-xs text-side-muted">
@@ -268,6 +291,16 @@ function Shell({ children }: { children: ReactNode }) {
         {/* The company switcher comes first because every figure below it is
             scoped to the chosen legal entity. */}
         <div className="px-3 pb-3">
+          {active?.logoUrl && (
+            <div className="mb-2 flex h-16 items-center justify-center rounded-xl bg-white p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={assetSrc(active.logoUrl)!}
+                alt={active.name}
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+          )}
           {companies.length > 0 ? (
             <label className="relative block">
               <span className="sr-only">{t('Société')}</span>

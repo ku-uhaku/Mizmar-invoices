@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PdfModule } from '../pdf/pdf.module';
+import { CompanyLogoController } from './company-logo.controller';
 import {
   CompaniesController,
   MembersController,
@@ -11,7 +12,7 @@ import { SettingsService } from './settings.service';
   // The configurator's live preview is rendered by the same service that
   // produces the PDF, which is what keeps the two in step.
   imports: [PdfModule],
-  controllers: [CompaniesController, MembersController, TemplatesController],
+  controllers: [CompaniesController, CompanyLogoController, MembersController, TemplatesController],
   providers: [SettingsService],
 })
 export class SettingsModule {}

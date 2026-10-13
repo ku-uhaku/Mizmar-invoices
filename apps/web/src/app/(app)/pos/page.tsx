@@ -10,6 +10,7 @@ import { api, ApiError, unwrap } from '@/lib/api';
 import { amount, money, paymentMethodLabel } from '@/lib/format';
 import { useT } from '@/lib/i18n/provider';
 import { Icon } from '@/components/icons';
+import { Combobox } from '@/components/combobox';
 import {
   CloseSessionDialog,
   MovementDialog,
@@ -99,9 +100,17 @@ function PosScreen({ sessionId }: { sessionId: string | null }) {
     }
   }, [activeWarehouses, warehouseId]);
 
+  // Searched on the server so clients beyond the first page are reachable.
+  const [clientSearch, setClientSearch] = useState('');
   const clients = useQuery({
-    queryKey: ['contacts', 'pos'],
-    queryFn: async () => unwrap(await api.contacts.list({ query: { kind: 'CLIENT', limit: 100 } })),
+    queryKey: ['contacts', 'pos', clientSearch],
+    queryFn: async () =>
+      unwrap(
+        await api.contacts.list({
+          query: { kind: 'CLIENT', limit: 50, ...(clientSearch ? { search: clientSearch } : {}) },
+        }),
+      ),
+    placeholderData: (previous) => previous,
   });
 
   const results = useQuery({
@@ -513,19 +522,18 @@ function PosScreen({ sessionId }: { sessionId: string | null }) {
                   />
                 </Field>
                 <Field label={t('Client')}>
-                  <Select
+                  <Combobox
                     value={customerId}
-                    onChange={(event) => setCustomerId(event.target.value)}
-                  >
-                    <option value="">{t(WALK_IN_NAME)}</option>
-                    {(clients.data?.items ?? [])
+                    onChange={(value) => setCustomerId(value)}
+                    onSearch={setClientSearch}
+                    loading={clients.isFetching}
+                    selectedLabel={t(WALK_IN_NAME)}
+                    placeholder={t(WALK_IN_NAME)}
+                    clearable
+                    options={(clients.data?.items ?? [])
                       .filter((contact) => contact.displayName !== WALK_IN_NAME)
-                      .map((contact) => (
-                        <option key={contact.id} value={contact.id}>
-                          {contact.displayName}
-                        </option>
-                      ))}
-                  </Select>
+                      .map((contact) => ({ value: contact.id, label: contact.displayName }))}
+                  />
                 </Field>
               </div>
 

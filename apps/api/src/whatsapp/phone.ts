@@ -19,6 +19,10 @@ export function normalizePhone(raw: string, defaultCountryCode = '212'): string 
   }
 
   digits = digits.replace(/\D/g, '');
+  // "+212 (0)6 12 ..." keeps the national trunk zero after the country code.
+  if (digits.startsWith(`${defaultCountryCode}0`)) {
+    digits = defaultCountryCode + digits.slice(defaultCountryCode.length + 1);
+  }
   // E.164 allows at most 15 digits; anything under 8 cannot be a real number.
   if (digits.length < 8 || digits.length > 15) return null;
   return digits;

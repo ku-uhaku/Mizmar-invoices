@@ -12,6 +12,7 @@ import {
   computeFulfilment,
   computeSettlement,
   computeTotals,
+  ConversionError,
   conversionTargets,
   canCancel as coreCanCancel,
   dec,
@@ -656,7 +657,13 @@ export class DocumentsService {
 
     // Runs the same validation the conversion itself will, so the dialog cannot
     // offer a combination the server would then refuse.
-    planConversion(documents.map((d) => this.toConversionSource(d)), targetType);
+    // A fully drawn source is not an error here: the dialog still lists the
+    // lines (ordered / drawn / remaining) so the user can see why nothing is left.
+    try {
+      planConversion(documents.map((d) => this.toConversionSource(d)), targetType);
+    } catch (error) {
+      if (!(error instanceof ConversionError && error.code === 'NOTHING_TO_CONVERT')) throw error;
+    }
 
     return {
       targetType,
